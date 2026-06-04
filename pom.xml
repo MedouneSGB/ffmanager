@@ -9,6 +9,9 @@
     <version>0.1.0</version>
     <packaging>jar</packaging>
 
+    <name>FFmpeg Studio</name>
+    <description>L'atelier ultime de traitement, téléchargement et lecture en direct de flux vidéo.</description>
+
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
