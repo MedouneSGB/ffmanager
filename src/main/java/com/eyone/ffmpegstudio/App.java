@@ -690,6 +690,13 @@ public class App extends Application {
             mediaUrl = new File(source).toURI().toString();
         } else {
             mediaUrl = source;
+            if (mediaUrl.contains(".m3u8")) {
+                try {
+                    mediaUrl = "http://localhost:8555/proxy-m3u8?url=" + java.net.URLEncoder.encode(mediaUrl, "UTF-8");
+                } catch (Exception e) {
+                    // Fallback
+                }
+            }
         }
 
         try {
@@ -1502,6 +1509,91 @@ public class App extends Application {
                     os.close();
                 }
             });
+
+            localServer.createContext("/proxy-m3u8", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws java.io.IOException {
+                    // CORS preflight (OPTIONS)
+                    if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, OPTIONS");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+                        exchange.sendResponseHeaders(204, -1);
+                        return;
+                    }
+                    
+                    if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        String query = exchange.getRequestURI().getRawQuery();
+                        String targetUrl = null;
+                        if (query != null && query.startsWith("url=")) {
+                            targetUrl = java.net.URLDecoder.decode(query.substring(4), "UTF-8");
+                        }
+                        
+                        if (targetUrl != null && !targetUrl.isEmpty()) {
+                            try {
+                                java.net.URL urlObj = new java.net.URL(targetUrl);
+                                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) urlObj.openConnection();
+                                conn.setRequestMethod("GET");
+                                conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                                conn.setConnectTimeout(5000);
+                                conn.setReadTimeout(5000);
+                                
+                                int status = conn.getResponseCode();
+                                if (status == 200) {
+                                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                                    StringBuilder sb = new StringBuilder();
+                                    String line;
+                                    String baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
+                                    java.net.URL baseUriObj = new java.net.URL(targetUrl);
+                                    String hostRoot = baseUriObj.getProtocol() + "://" + baseUriObj.getHost();
+                                    
+                                    while ((line = reader.readLine()) != null) {
+                                        String trimmed = line.trim();
+                                        if (trimmed.startsWith("#")) {
+                                            if (trimmed.contains("URI=\"")) {
+                                                int startIdx = trimmed.indexOf("URI=\"") + 5;
+                                                int endIdx = trimmed.indexOf("\"", startIdx);
+                                                if (endIdx > startIdx) {
+                                                    String relativeUri = trimmed.substring(startIdx, endIdx);
+                                                    String absoluteUri = resolveUrl(relativeUri, baseUrl, hostRoot);
+                                                    if (absoluteUri.contains(".m3u8")) {
+                                                        absoluteUri = "http://localhost:8555/proxy-m3u8?url=" + java.net.URLEncoder.encode(absoluteUri, "UTF-8");
+                                                    }
+                                                    trimmed = trimmed.substring(0, startIdx) + absoluteUri + trimmed.substring(endIdx);
+                                                }
+                                            }
+                                            sb.append(trimmed).append("\n");
+                                        } else if (!trimmed.isEmpty()) {
+                                            String absoluteUri = resolveUrl(trimmed, baseUrl, hostRoot);
+                                            if (absoluteUri.contains(".m3u8")) {
+                                                absoluteUri = "http://localhost:8555/proxy-m3u8?url=" + java.net.URLEncoder.encode(absoluteUri, "UTF-8");
+                                            }
+                                            sb.append(absoluteUri).append("\n");
+                                        } else {
+                                            sb.append("\n");
+                                        }
+                                    }
+                                    reader.close();
+                                    
+                                    byte[] responseBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+                                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                                    exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
+                                    exchange.sendResponseHeaders(200, responseBytes.length);
+                                    OutputStream os = exchange.getResponseBody();
+                                    os.write(responseBytes);
+                                    os.close();
+                                    return;
+                                }
+                            } catch (Exception ex) {
+                                System.err.println("[DEBUG HLS Proxy] Exception: " + ex.getMessage());
+                            }
+                        }
+                    }
+                    
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(404, -1);
+                }
+            });
             
             localServer.setExecutor(java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r);
@@ -1513,6 +1605,22 @@ public class App extends Application {
             System.out.println("Mini-serveur HTTP démarré sur http://localhost:8555");
         } catch (Exception e) {
             System.err.println("Impossible de démarrer le mini-serveur HTTP : " + e.getMessage());
+        }
+    }
+
+    private static String resolveUrl(String relativeUrl, String baseUrl, String hostRoot) {
+        if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
+            return relativeUrl;
+        }
+        if (relativeUrl.startsWith("/")) {
+            return hostRoot + relativeUrl;
+        }
+        try {
+            java.net.URL base = new java.net.URL(baseUrl);
+            java.net.URL resolved = new java.net.URL(base, relativeUrl);
+            return resolved.toString();
+        } catch (Exception e) {
+            return baseUrl + relativeUrl;
         }
     }
 
