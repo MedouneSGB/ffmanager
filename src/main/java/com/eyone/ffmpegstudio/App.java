@@ -305,6 +305,12 @@ public class App extends Application {
         addBtn.setMaxWidth(Double.MAX_VALUE);
         addBtn.setPrefHeight(45);
         addBtn.setOnAction(e -> addJob());
+
+        // Configuration du pliage/dépliage interactif des cartes (Accordéon)
+        makeCollapsible(srcCard, srcLabel, srcLabel, srcLabel, false);
+        makeCollapsible(presetCard, prsLabel, prsLabel, prsLabel, false);
+        makeCollapsible(advCard, advLabel, advLabel, advLabel, true); // Démarre replié
+        makeCollapsible(previewCard, previewHeader, cmdLabel, cmdLabel, false);
         
         controlsContainer.getChildren().addAll(srcCard, presetCard, advCard, previewCard, addBtn);
         
@@ -1172,6 +1178,53 @@ public class App extends Application {
 
         table.getColumns().addAll(nameCol, statusCol, progCol, timeCol, actionCol);
         table.setItems(queue.getJobs());
+    }
+
+    /**
+     * Rend un panneau (VBox) repliable/dépliable en cliquant sur un élément déclencheur.
+     *
+     * @param card Les conteneurs VBox représentant la carte.
+     * @param headerNode Le nœud principal d'en-tête à conserver visible (généralement le label ou le conteneur du titre).
+     * @param clickTarget L'élément interactif qui reçoit le clic pour basculer (généralement le titre Label).
+     * @param titleLabel Le label contenant le titre textuel à modifier pour y ajouter la flèche directionnelle.
+     * @param startCollapsed Si vrai, le panneau démarre dans l'état replié/masqué au démarrage.
+     */
+    private void makeCollapsible(VBox card, javafx.scene.Node headerNode, javafx.scene.Node clickTarget, Label titleLabel, boolean startCollapsed) {
+        // Obtenir tous les nœuds de contenu à masquer/afficher (tout sauf le headerNode)
+        List<javafx.scene.Node> contentNodes = new java.util.ArrayList<>(card.getChildren());
+        contentNodes.remove(headerNode);
+
+        // Configurer le curseur pour indiquer l'interactivité
+        clickTarget.setCursor(Cursor.HAND);
+
+        // État de repliement
+        final boolean[] isCollapsed = {false};
+        String originalText = titleLabel.getText();
+
+        // Gestionnaire d'action pour basculer l'affichage
+        Runnable toggle = () -> {
+            isCollapsed[0] = !isCollapsed[0];
+            for (javafx.scene.Node node : contentNodes) {
+                node.setVisible(!isCollapsed[0]);
+                node.setManaged(!isCollapsed[0]);
+            }
+            if (isCollapsed[0]) {
+                titleLabel.setText("▶ " + originalText);
+            } else {
+                titleLabel.setText("▼ " + originalText);
+            }
+        };
+
+        // Déclencher le basculement lors d'un clic
+        clickTarget.setOnMouseClicked(e -> toggle.run());
+
+        // État de démarrage
+        if (startCollapsed) {
+            isCollapsed[0] = false;
+            toggle.run();
+        } else {
+            titleLabel.setText("▼ " + originalText);
+        }
     }
 
     public static void main(String[] args) {
