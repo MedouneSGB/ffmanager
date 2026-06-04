@@ -1357,6 +1357,7 @@ public class App extends Application {
         });
         actionCol.setPrefWidth(210);
 
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.getColumns().addAll(nameCol, statusCol, progCol, timeCol, actionCol);
         table.setItems(queue.getJobs());
     }
