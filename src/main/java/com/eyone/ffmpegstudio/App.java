@@ -672,7 +672,10 @@ public class App extends Application {
             alert.showAndWait();
             return;
         }
+        playMedia(source, parentStage);
+    }
 
+    private void playMedia(String source, Stage parentStage) {
         // Conversion en URI si fichier local
         String mediaUrl;
         if (!source.startsWith("http://") && !source.startsWith("https://")) {
@@ -1216,6 +1219,18 @@ public class App extends Application {
                         case ECHEC -> badge.getStyleClass().add("badge-echec");
                         case ANNULE -> badge.getStyleClass().add("badge-annule");
                     }
+                    if (status == Job.Status.ECHEC) {
+                        Job job = getTableView().getItems().get(getIndex());
+                        if (job != null && job.messageProperty().get() != null && !job.messageProperty().get().isEmpty()) {
+                            Tooltip tooltip = new Tooltip(job.messageProperty().get());
+                            tooltip.setStyle("-fx-font-size: 12px; -fx-base: #2b2b36; -fx-text-fill: #ffffff;");
+                            badge.setTooltip(tooltip);
+                        } else {
+                            badge.setTooltip(null);
+                        }
+                    } else {
+                        badge.setTooltip(null);
+                    }
                     setGraphic(badge);
                 }
             }
@@ -1253,13 +1268,52 @@ public class App extends Application {
 
         TableColumn<Job, Void> actionCol = new TableColumn<>("Actions");
         actionCol.setCellFactory(col -> new TableCell<>() {
-            private final Button cancel = new Button("Annuler");
+            private final Button cancelBtn = new Button("Annuler");
+            private final Button fileBtn = new Button("Fichier");
+            private final Button playBtn = new Button("Lire");
+            private final HBox container = new HBox(6, cancelBtn, fileBtn, playBtn);
             {
-                cancel.getStyleClass().add("btn-danger");
-                cancel.setOnAction(e -> {
+                container.setAlignment(Pos.CENTER);
+                cancelBtn.getStyleClass().add("btn-danger");
+                fileBtn.getStyleClass().add("btn-secondary");
+                playBtn.getStyleClass().add("btn-secondary");
+                
+                // Style des boutons pour tenir dans le tableau
+                cancelBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
+                fileBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
+                playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214;");
+                
+                cancelBtn.setOnAction(e -> {
                     Job job = getTableView().getItems().get(getIndex());
                     if (job != null) {
-                        queue.cancel(job);
+                        if (job.getStatus() == Job.Status.EN_ATTENTE || job.getStatus() == Job.Status.EN_COURS) {
+                            queue.cancel(job);
+                        } else {
+                            queue.getJobs().remove(job);
+                        }
+                    }
+                });
+                
+                fileBtn.setOnAction(e -> {
+                    Job job = getTableView().getItems().get(getIndex());
+                    if (job != null && job.getOutput() != null) {
+                        File outFile = job.getOutput();
+                        try {
+                            if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                                new ProcessBuilder("explorer.exe", "/select,", outFile.getAbsolutePath()).start();
+                            } else {
+                                java.awt.Desktop.getDesktop().open(outFile.getParentFile());
+                            }
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
+                    }
+                });
+                
+                playBtn.setOnAction(e -> {
+                    Job job = getTableView().getItems().get(getIndex());
+                    if (job != null && job.getOutput() != null) {
+                        playMedia(job.getOutput().getAbsolutePath(), primaryStage);
                     }
                 });
             }
@@ -1270,19 +1324,38 @@ public class App extends Application {
                 } else {
                     Job job = getTableView().getItems().get(getIndex());
                     if (job != null) {
-                        if (job.getStatus() == Job.Status.EN_ATTENTE || job.getStatus() == Job.Status.EN_COURS) {
-                            cancel.setDisable(false);
-                            cancel.setText("Annuler");
+                        Job.Status status = job.getStatus();
+                        if (status == Job.Status.EN_ATTENTE || status == Job.Status.EN_COURS) {
+                            cancelBtn.setVisible(true);
+                            cancelBtn.setManaged(true);
+                            cancelBtn.setText("Annuler");
+                            fileBtn.setVisible(false);
+                            fileBtn.setManaged(false);
+                            playBtn.setVisible(false);
+                            playBtn.setManaged(false);
                         } else {
-                            cancel.setDisable(true);
-                            cancel.setText("Fini");
+                            cancelBtn.setVisible(true);
+                            cancelBtn.setManaged(true);
+                            cancelBtn.setText("Supprimer");
+                            
+                            if (status == Job.Status.TERMINE && job.getOutput() != null && job.getOutput().exists()) {
+                                fileBtn.setVisible(true);
+                                fileBtn.setManaged(true);
+                                playBtn.setVisible(true);
+                                playBtn.setManaged(true);
+                            } else {
+                                fileBtn.setVisible(false);
+                                fileBtn.setManaged(false);
+                                playBtn.setVisible(false);
+                                playBtn.setManaged(false);
+                            }
                         }
                     }
-                    setGraphic(cancel);
+                    setGraphic(container);
                 }
             }
         });
-        actionCol.setPrefWidth(90);
+        actionCol.setPrefWidth(210);
 
         table.getColumns().addAll(nameCol, statusCol, progCol, timeCol, actionCol);
         table.setItems(queue.getJobs());
