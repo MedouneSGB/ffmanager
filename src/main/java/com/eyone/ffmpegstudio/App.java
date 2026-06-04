@@ -28,6 +28,16 @@ import javafx.util.Duration;
 import java.io.File;
 import java.util.List;
 import java.util.prefs.Preferences;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpExchange;
+import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.stream.Collectors;
 
 /**
  * Interface utilisateur enrichie, esthétique et performante.
@@ -71,6 +81,7 @@ public class App extends Application {
 
     // Référence du lecteur de streaming
     private MediaPlayer mediaPlayer;
+    private HttpServer localServer;
 
     @Override
     public void start(Stage stage) {
@@ -79,6 +90,9 @@ public class App extends Application {
         
         runner = new FFmpegRunner(ffmpegPath, ffprobePath);
         queue = new JobQueueService(runner);
+        
+        // Démarrer le serveur HTTP local pour l'extension Chrome
+        startLocalServer();
 
         // --- En-tête statut ---
         Label appTitle = new Label("FFmpeg Studio");
@@ -373,6 +387,9 @@ public class App extends Application {
             if (mediaPlayer != null) {
                 mediaPlayer.stop();
                 mediaPlayer.dispose();
+            }
+            if (localServer != null) {
+                localServer.stop(0);
             }
         });
         
@@ -1307,6 +1324,73 @@ public class App extends Application {
             parentStage.getScene().getRoot().getStyleClass().contains("light-theme")) {
             dialog.getDialogPane().getStyleClass().add("light-theme");
         }
+    }
+
+    private void startLocalServer() {
+        try {
+            localServer = HttpServer.create(new InetSocketAddress("localhost", 8555), 0);
+            localServer.createContext("/add-stream", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws java.io.IOException {
+                    // CORS preflight (OPTIONS)
+                    if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, OPTIONS");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+                        exchange.sendResponseHeaders(204, -1);
+                        return;
+                    }
+                    
+                    if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        InputStream is = exchange.getRequestBody();
+                        String body = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))
+                                .lines().collect(Collectors.joining("\n"));
+                        
+                        String url = extractUrlFromJson(body);
+                        
+                        if (url != null && !url.isEmpty()) {
+                            Platform.runLater(() -> {
+                                urlSourceRadio.setSelected(true);
+                                urlField.setText(url);
+                            });
+                            
+                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                            exchange.getResponseHeaders().add("Content-Type", "application/json");
+                            byte[] response = "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+                            exchange.sendResponseHeaders(200, response.length);
+                            OutputStream os = exchange.getResponseBody();
+                            os.write(response);
+                            os.close();
+                            return;
+                        }
+                    }
+                    
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    byte[] response = "{\"status\":\"error\"}".getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(400, response.length);
+                    OutputStream os = exchange.getResponseBody();
+                    os.write(response);
+                    os.close();
+                }
+            });
+            
+            localServer.setExecutor(java.util.concurrent.Executors.newSingleThreadExecutor());
+            localServer.start();
+            System.out.println("Mini-serveur HTTP démarré sur http://localhost:8555");
+        } catch (Exception e) {
+            System.err.println("Impossible de démarrer le mini-serveur HTTP : " + e.getMessage());
+        }
+    }
+
+    private String extractUrlFromJson(String json) {
+        if (json == null) return null;
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"url\"\\s*:\\s*\"([^\"]+)\"");
+        java.util.regex.Matcher matcher = pattern.matcher(json);
+        if (matcher.find()) {
+            return matcher.group(1).replace("\\/", "/");
+        }
+        return null;
     }
 
     public static void main(String[] args) {
