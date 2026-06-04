@@ -1,11 +1,11 @@
 # FFmpeg Studio 🎥
 
 <p align="center">
-  <img src="screenshots/app_icon.png" width="128" height="128" alt="FFmpeg Studio Icon" />
+  <img src="screenshots/banner.png" width="100%" alt="FFmpeg Studio Banner" />
 </p>
 
 <p align="center">
-  <b>L'atelier ultime de traitement, téléchargement et lecture en direct de flux vidéo.</b>
+  <b>L'interface ultime pour FFmpeg : File d'attente, conversion, lecteur de flux et extension Chrome d'extraction.</b>
 </p>
 
 <p align="center">
