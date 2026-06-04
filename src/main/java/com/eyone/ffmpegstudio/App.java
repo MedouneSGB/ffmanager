@@ -85,6 +85,7 @@ public class App extends Application {
     private MediaPlayer mediaPlayer;
     private HttpServer localServer;
     private Stage primaryStage;
+    private Stage activePlayerStage;
 
     // Transmuxing local HLS
     private java.io.File tempHlsDir;
@@ -141,8 +142,12 @@ public class App extends Application {
                 themeToggleBtn.setText("\uD83C\uDF19");
             }
         });
+
+        Button logsBtn = new Button("Logs 📋");
+        logsBtn.getStyleClass().add("btn-secondary");
+        logsBtn.setOnAction(e -> openLogFile());
         
-        HBox statusBox = new HBox(12, ffmpegStatusLabel, themeToggleBtn, configBtn);
+        HBox statusBox = new HBox(12, ffmpegStatusLabel, themeToggleBtn, logsBtn, configBtn);
         statusBox.setAlignment(Pos.CENTER_RIGHT);
         
         BorderPane header = new BorderPane();
@@ -790,6 +795,24 @@ public class App extends Application {
     }
 
     private void playMedia(String source, Stage parentStage) {
+        if (mediaPlayer != null && activePlayerStage != null) {
+            String currentSource = mediaPlayer.getMedia().getSource();
+            String requestedUrl = source;
+            if (!source.startsWith("http://") && !source.startsWith("https://")) {
+                requestedUrl = new File(source).toURI().toString();
+            }
+            if (currentSource.equals(requestedUrl) || (source.contains(".m3u8") && currentSource.contains("local-hls/playlist.m3u8"))) {
+                Platform.runLater(() -> {
+                    if (activePlayerStage != null) {
+                        activePlayerStage.show();
+                        activePlayerStage.toFront();
+                        activePlayerStage.setIconified(false);
+                    }
+                });
+                System.out.println("[PLAY] Le flux ou la vidéo est déjà en cours de lecture. Fenêtre ramenée au premier plan.");
+                return;
+            }
+        }
         cleanupTransmux();
         if (source.startsWith("http://") || source.startsWith("https://")) {
             if (source.contains(".m3u8")) {
@@ -903,11 +926,20 @@ public class App extends Application {
             disposeMediaPlayer();
 
             Media media = new Media(mediaUrl);
+            media.setOnError(() -> {
+                Throwable t = media.getError();
+                System.err.println("[ERROR] Erreur du Media JavaFX : " + (t != null ? t.getMessage() : "Inconnue"));
+                if (t != null) {
+                    t.printStackTrace(System.err);
+                }
+            });
+
             mediaPlayer = new MediaPlayer(media);
             final MediaPlayer player = mediaPlayer;
             MediaView mediaView = new MediaView(player);
 
             Stage playerStage = new Stage();
+            activePlayerStage = playerStage;
             playerStage.initOwner(parentStage);
             playerStage.setTitle("Lecteur de Flux - FFmpeg Studio 🎥");
             try {
@@ -1020,7 +1052,12 @@ public class App extends Application {
 
             // Événement d'Erreur
             player.setOnError(() -> {
-                String err = player.getError().getMessage();
+                Throwable t = player.getError();
+                String err = t != null ? t.getMessage() : "Inconnue";
+                System.err.println("[ERROR] Erreur du MediaPlayer JavaFX : " + err);
+                if (t != null) {
+                    t.printStackTrace(System.err);
+                }
                 Platform.runLater(() -> {
                     Alert alert = new Alert(Alert.AlertType.ERROR);
                     alert.setTitle("Erreur de Lecture");
@@ -1157,6 +1194,7 @@ public class App extends Application {
                 idleTimeout.stop();
                 fadeOut.stop();
                 fadeIn.stop();
+                activePlayerStage = null;
                 disposeMediaPlayer();
                 if (isLocalHls) {
                     cleanupTransmux();
@@ -2069,6 +2107,14 @@ public class App extends Application {
                 Platform.runLater(r);
             }
         }
+        if (activePlayerStage != null) {
+            Platform.runLater(() -> {
+                if (activePlayerStage != null) {
+                    activePlayerStage.close();
+                    activePlayerStage = null;
+                }
+            });
+        }
     }
 
     private synchronized void cleanupTransmux() {
@@ -2104,6 +2150,37 @@ public class App extends Application {
             // Le port est libre ou l'instance n'a pas répondu
         }
         return false;
+    }
+
+    private void openLogFile() {
+        java.io.File file = new java.io.File("errors.log");
+        if (!file.exists()) {
+            try {
+                file.createNewFile();
+            } catch (Exception ex) {
+                // ignore
+            }
+        }
+        if (file.exists()) {
+            try {
+                String os = System.getProperty("os.name").toLowerCase();
+                if (os.contains("win")) {
+                    new ProcessBuilder("notepad.exe", file.getAbsolutePath()).start();
+                } else if (os.contains("mac")) {
+                    new ProcessBuilder("open", "-e", file.getAbsolutePath()).start();
+                } else {
+                    new ProcessBuilder("xdg-open", file.getAbsolutePath()).start();
+                }
+            } catch (Exception ex) {
+                try {
+                    if (java.awt.Desktop.isDesktopSupported()) {
+                        java.awt.Desktop.getDesktop().open(file);
+                    }
+                } catch (Exception e2) {
+                    System.err.println("Impossible d'ouvrir le fichier de log : " + e2.getMessage());
+                }
+            }
+        }
     }
 
     @Override
