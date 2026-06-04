@@ -51,27 +51,55 @@ public class JobQueueService {
         // Si annule alors qu'il etait encore en attente
         if (job.getStatus() == Job.Status.ANNULE) return;
 
+        job.markStarted();
         Platform.runLater(() -> job.setStatus(Job.Status.EN_COURS));
         try {
             int code = runner.run(job, (frac, msg) -> Platform.runLater(() -> {
                 job.progressProperty().set(frac);
                 job.messageProperty().set(msg);
+                job.updateElapsed();
             }));
             Platform.runLater(() -> {
-                if (job.getStatus() == Job.Status.ANNULE) return;
+                if (job.getStatus() == Job.Status.ANNULE) {
+                    cleanupOutputFile(job);
+                    return;
+                }
+                job.markFinished();
                 job.setStatus(code == 0 ? Job.Status.TERMINE : Job.Status.ECHEC);
-                if (code != 0) job.messageProperty().set("FFmpeg a echoue (code " + code + ")");
+                if (code != 0) {
+                    job.messageProperty().set("FFmpeg a echoue (code " + code + ")");
+                    cleanupOutputFile(job);
+                }
             });
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            Platform.runLater(() -> job.setStatus(Job.Status.ANNULE));
+            Platform.runLater(() -> { 
+                job.markFinished(); 
+                job.setStatus(Job.Status.ANNULE); 
+                cleanupOutputFile(job);
+            });
         } catch (Exception e) {
             Platform.runLater(() -> {
+                job.markFinished();
                 job.setStatus(Job.Status.ECHEC);
                 job.messageProperty().set(e.getMessage());
+                cleanupOutputFile(job);
             });
         } finally {
             futures.remove(job);
+        }
+    }
+
+    private void cleanupOutputFile(Job job) {
+        try {
+            java.io.File out = job.getOutput();
+            if (out != null && out.exists()) {
+                if (out.delete()) {
+                    System.out.println("Fichier de sortie partiel supprime : " + out.getAbsolutePath());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur suppression fichier partiel : " + e.getMessage());
         }
     }
 
