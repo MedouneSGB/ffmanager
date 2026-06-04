@@ -1197,9 +1197,9 @@ public class App extends Application {
 
     @SuppressWarnings("unchecked")
     private void buildTable() {
-        TableColumn<Job, String> nameCol = new TableColumn<>("Source");
+        TableColumn<Job, String> nameCol = new TableColumn<>("Nom");
         nameCol.setCellValueFactory(c ->
-                new javafx.beans.property.SimpleStringProperty(c.getValue().getSourceName()));
+                new javafx.beans.property.SimpleStringProperty(c.getValue().getOutput().getName()));
         nameCol.setPrefWidth(180);
 
         TableColumn<Job, Job.Status> statusCol = new TableColumn<>("Statut");
