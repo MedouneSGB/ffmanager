@@ -2057,7 +2057,48 @@ public class App extends Application {
         System.exit(0);
     }
 
+    private static void setupErrorLogging() {
+        try {
+            java.io.File logFile = new java.io.File("errors.log");
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(logFile, true);
+            java.io.PrintStream fileOut = new java.io.PrintStream(fos, true, "UTF-8");
+            java.io.PrintStream originalErr = System.err;
+            
+            java.io.PrintStream dualErr = new java.io.PrintStream(new java.io.OutputStream() {
+                @Override
+                public void write(int b) throws java.io.IOException {
+                    originalErr.write(b);
+                    fileOut.write(b);
+                }
+                
+                @Override
+                public void write(byte[] b, int off, int len) throws java.io.IOException {
+                    originalErr.write(b, off, len);
+                    fileOut.write(b, off, len);
+                }
+                
+                @Override
+                public void flush() throws java.io.IOException {
+                    originalErr.flush();
+                    fileOut.flush();
+                }
+                
+                @Override
+                public void close() throws java.io.IOException {
+                    fileOut.close();
+                    originalErr.close();
+                }
+            }, true, "UTF-8");
+            
+            System.setErr(dualErr);
+            System.err.println("\n--- DÉMARRAGE DE L'APPLICATION [" + java.time.LocalDateTime.now() + "] ---");
+        } catch (Exception e) {
+            System.out.println("Impossible de configurer le fichier de log d'erreurs : " + e.getMessage());
+        }
+    }
+
     public static void main(String[] args) {
+        setupErrorLogging();
         launch(args);
     }
 }
