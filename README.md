@@ -30,8 +30,11 @@ Que vous souhaitiez convertir des fichiers locaux, extraire des pistes audio, t�
 ### Tableau de bord principal (File d'attente & Surcharges)
 ![Interface principale](screenshots/main_app.png)
 
-### Lecteur vidéo flottant (Disparition des commandes & Plein écran)
-![Lecteur vidéo](screenshots/player_fullscreen.png)
+### Lecteur vidéo flottant (Contrôles auto-hide & Plein écran)
+![Lecteur vidéo](screenshots/player_preview.png)
+
+### Extension Chrome (FFmpeg Studio Linker)
+![Extension Chrome](screenshots/extension_preview.png)
 
 ---
 
