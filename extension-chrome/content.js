@@ -16,6 +16,7 @@ function injectStyles() {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
       direction: ltr !important;
       user-select: none !important;
+      pointer-events: none !important; /* Allow clicks around the button to pass through */
     }
     
     .ffmpeg-float-btn {
@@ -32,6 +33,8 @@ function injectStyles() {
       box-shadow: 0 4px 12px rgba(124, 77, 255, 0.4) !important;
       transition: all 0.2s ease-in-out !important;
       outline: none !important;
+      pointer-events: auto !important; /* Intercept clicks on the button */
+      z-index: 2147483647 !important;
     }
     
     .ffmpeg-float-btn:hover {
@@ -53,6 +56,8 @@ function injectStyles() {
       overflow: hidden !important;
       animation: ffmpegFadeIn 0.15s ease-out !important;
       padding: 6px 0 !important;
+      pointer-events: auto !important; /* Intercept clicks on the dropdown */
+      z-index: 2147483647 !important;
     }
     
     @keyframes ffmpegFadeIn {
@@ -332,17 +337,23 @@ function scanForVideos() {
     const parent = video.parentElement;
     if (!parent) continue;
     
-    // Skip if already attached
-    if (parent.querySelector('.ffmpeg-float-panel')) continue;
-    
-    // Style parent to relative if static so absolute children align correctly
-    const style = window.getComputedStyle(parent);
-    if (style.position === 'static') {
-      parent.style.position = 'relative';
+    // Check if already attached
+    const panel = parent.querySelector('.ffmpeg-float-panel');
+    if (!panel) {
+      // Style parent to relative if static so absolute children align correctly
+      const style = window.getComputedStyle(parent);
+      if (style.position === 'static') {
+        parent.style.position = 'relative';
+      }
+      
+      const newPanel = createFloatPanel(video);
+      parent.appendChild(newPanel);
+    } else {
+      // If it exists but is not the last child, re-append it so it sits on top of any newly created ad overlays
+      if (parent.lastChild !== panel) {
+        parent.appendChild(panel);
+      }
     }
-    
-    const panel = createFloatPanel(video);
-    parent.appendChild(panel);
   }
 }
 
