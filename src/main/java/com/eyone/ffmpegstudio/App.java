@@ -12,6 +12,7 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.Clipboard;
@@ -100,14 +101,27 @@ public class App extends Application {
         configBtn.getStyleClass().add("btn-secondary");
         configBtn.setOnAction(e -> showPathConfigDialog(stage));
         
-        HBox statusBox = new HBox(12, ffmpegStatusLabel, configBtn);
+        Button themeToggleBtn = new Button("\u2600");
+        themeToggleBtn.getStyleClass().add("btn-secondary");
+        themeToggleBtn.setOnAction(e -> {
+            Parent rootNode = stage.getScene().getRoot();
+            if (rootNode.getStyleClass().contains("light-theme")) {
+                rootNode.getStyleClass().remove("light-theme");
+                themeToggleBtn.setText("\u2600");
+            } else {
+                rootNode.getStyleClass().add("light-theme");
+                themeToggleBtn.setText("\uD83C\uDF19");
+            }
+        });
+        
+        HBox statusBox = new HBox(12, ffmpegStatusLabel, themeToggleBtn, configBtn);
         statusBox.setAlignment(Pos.CENTER_RIGHT);
         
         BorderPane header = new BorderPane();
         header.setLeft(appTitle);
         header.setRight(statusBox);
         header.setPadding(new Insets(10, 15, 10, 15));
-        header.setStyle("-fx-background-color: #1a1a24; -fx-border-color: transparent transparent #2b2b36 transparent; -fx-border-width: 1px;");
+        header.setStyle("-fx-background-color: bg-header; -fx-border-color: transparent transparent border-header transparent; -fx-border-width: 1px;");
         
         updateFFmpegStatusUI();
 
@@ -124,11 +138,11 @@ public class App extends Application {
 
         ToggleGroup sourceGroup = new ToggleGroup();
         fileSourceRadio.setToggleGroup(sourceGroup);
-        fileSourceRadio.setSelected(true);
-        fileSourceRadio.setStyle("-fx-text-fill: #e1e1e6; -fx-font-weight: bold;");
+        fileSourceRadio.setStyle("-fx-text-fill: text-secondary; -fx-font-weight: bold;");
         urlSourceRadio.setToggleGroup(sourceGroup);
-        urlSourceRadio.setStyle("-fx-text-fill: #e1e1e6; -fx-font-weight: bold;");
-        HBox sourceToggleRow = new HBox(15, fileSourceRadio, urlSourceRadio);
+        urlSourceRadio.setSelected(true);
+        urlSourceRadio.setStyle("-fx-text-fill: text-secondary; -fx-font-weight: bold;");
+        HBox sourceToggleRow = new HBox(15, urlSourceRadio, fileSourceRadio);
         sourceToggleRow.setPadding(new Insets(0, 0, 5, 0));
 
         // Zone Fichier Local
@@ -143,6 +157,9 @@ public class App extends Application {
         fileLabel.setStyle("-fx-font-weight: bold;");
         HBox fileRow = new HBox(12, pickBtn, playBtn, fileLabel);
         fileRow.setAlignment(Pos.CENTER_LEFT);
+        // Masquage initial de la zone fichier local (car flux réseau est sélectionné par défaut)
+        fileRow.setVisible(false);
+        fileRow.setManaged(false);
 
         // Zone URL de Flux
         urlField.setPromptText("Saisir l'URL du flux (m3u8) ou d'une page Web à analyser...");
@@ -162,14 +179,10 @@ public class App extends Application {
         playUrlBtn.getStyleClass().add("btn-secondary");
         playUrlBtn.setOnAction(e -> playActiveStream(stage));
         
-        customOutputLabel.setStyle("-fx-font-weight: normal; -fx-text-fill: #a0a0b0;");
+        customOutputLabel.setStyle("-fx-font-weight: normal; -fx-text-fill: text-muted;");
         HBox urlOutputRow = new HBox(12, saveDestBtn, playUrlBtn, customOutputLabel);
         urlOutputRow.setAlignment(Pos.CENTER_LEFT);
         VBox urlRow = new VBox(8, urlInputRow, urlOutputRow);
-        
-        // Masquage initial de la zone URL
-        urlRow.setVisible(false);
-        urlRow.setManaged(false);
 
         // Gestion du basculement d'affichage
         sourceGroup.selectedToggleProperty().addListener((o, a, b) -> {
@@ -250,7 +263,7 @@ public class App extends Application {
         crfSlider.setMax(51);
         crfSlider.setValue(23);
         crfSlider.setBlockIncrement(1);
-        crfValueLabel.setStyle("-fx-text-fill: #9e7dff; -fx-font-weight: bold;");
+        crfValueLabel.setStyle("-fx-text-fill: primary-color; -fx-font-weight: bold;");
         crfSlider.valueProperty().addListener((o, a, b) -> {
             int val = b.intValue();
             String desc = "Qualité standard";
@@ -321,11 +334,10 @@ public class App extends Application {
         
         // --- Colonne de Droite (File d'attente) ---
         VBox tableContainer = new VBox(10);
-        tableContainer.setStyle("-fx-background-color: #121214;");
+        tableContainer.setStyle("-fx-background-color: bg-primary;");
         tableContainer.setPadding(new Insets(15));
         Label tableTitle = new Label("FILE D'ATTENTE SÉQUENTIELLE");
         tableTitle.getStyleClass().add("section-label");
-        tableTitle.setStyle("-fx-text-fill: #ffffff;");
         
         tableContainer.getChildren().addAll(tableTitle, table);
         VBox.setVgrow(table, Priority.ALWAYS);
@@ -426,12 +438,9 @@ public class App extends Application {
 
     private void showPathConfigDialog(Stage parentStage) {
         Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.initOwner(parentStage);
         dialog.setTitle("Configuration des chemins FFmpeg");
         dialog.setHeaderText("Spécifiez les chemins absolus vers les exécutables FFmpeg.");
-        
-        dialog.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-        dialog.getDialogPane().getStyleClass().add("card-panel");
+        styleDialog(dialog, parentStage);
 
         ButtonType saveButtonType = new ButtonType("Enregistrer", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
@@ -646,7 +655,9 @@ public class App extends Application {
     private void playActiveStream(Stage parentStage) {
         String source = getSourceInput();
         if (source == null) {
-            new Alert(Alert.AlertType.WARNING, "Veuillez sélectionner un fichier ou saisir une URL de flux.").showAndWait();
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Veuillez sélectionner un fichier ou saisir une URL de flux.");
+            styleDialog(alert, parentStage);
+            alert.showAndWait();
             return;
         }
 
@@ -789,6 +800,7 @@ public class App extends Application {
                     alert.setTitle("Erreur de Lecture");
                     alert.setHeaderText("Impossible de lire ce flux vidéo.");
                     alert.setContentText("Détail : " + err + "\n\nAssurez-vous que le flux est valide, actif et décodable nativement par le système (H.264/AAC).");
+                    styleDialog(alert, playerStage);
                     alert.showAndWait();
                     playerStage.close();
                 });
@@ -934,6 +946,7 @@ public class App extends Application {
             alert.setTitle("Erreur");
             alert.setHeaderText("Impossible d'initialiser le lecteur vidéo.");
             alert.setContentText(ex.getMessage());
+            styleDialog(alert, parentStage);
             alert.showAndWait();
         }
     }
@@ -945,9 +958,7 @@ public class App extends Application {
         String inputUrl = urlField.getText().trim();
         if (inputUrl.isEmpty()) {
             Alert alert = new Alert(Alert.AlertType.WARNING, "Veuillez saisir l'URL d'une page web à analyser.");
-            alert.initOwner(parentStage);
-            alert.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-            alert.getDialogPane().getStyleClass().add("card-panel");
+            styleDialog(alert, parentStage);
             alert.showAndWait();
             return;
         }
@@ -955,9 +966,7 @@ public class App extends Application {
         // Si l'utilisateur a déjà collé un lien de flux direct, pas besoin d'analyse
         if (inputUrl.endsWith(".m3u8") || inputUrl.endsWith(".mp4") || inputUrl.endsWith(".mpd") || inputUrl.endsWith(".webm") || inputUrl.contains(".m3u8?")) {
             Alert alert = new Alert(Alert.AlertType.INFORMATION, "Cette URL semble déjà être un lien de flux direct.");
-            alert.initOwner(parentStage);
-            alert.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-            alert.getDialogPane().getStyleClass().add("card-panel");
+            styleDialog(alert, parentStage);
             alert.showAndWait();
             return;
         }
@@ -979,9 +988,7 @@ public class App extends Application {
             List<com.eyone.ffmpegstudio.service.StreamDetector.DetectedStream> results = task.getValue();
             if (results == null || results.isEmpty()) {
                 Alert alert = new Alert(Alert.AlertType.WARNING, "Aucun flux vidéo (.m3u8, .mp4, etc.) n'a été détecté sur cette page.");
-                alert.initOwner(parentStage);
-                alert.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-                alert.getDialogPane().getStyleClass().add("card-panel");
+                styleDialog(alert, parentStage);
                 alert.showAndWait();
             } else if (results.size() == 1) {
                 com.eyone.ffmpegstudio.service.StreamDetector.DetectedStream stream = results.get(0);
@@ -990,24 +997,71 @@ public class App extends Application {
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
                 alert.setTitle("Flux Détecté");
                 alert.setHeaderText("Flux vidéo extrait avec succès !");
-                alert.setContentText("Le flux [" + stream.getQuality() + "] a été chargé :\n\n" + stream.getUrl());
-                alert.initOwner(parentStage);
-                alert.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-                alert.getDialogPane().getStyleClass().add("card-panel");
-                alert.showAndWait();
+                styleDialog(alert, parentStage);
+                alert.getDialogPane().setPrefWidth(550);
+                
+                // Amélioration de l'IHM pour une source unique
+                VBox content = new VBox(12);
+                content.setPadding(new Insets(10, 0, 10, 0));
+                
+                Label qualityLabel = new Label("Format / Qualité détecté :");
+                qualityLabel.setStyle("-fx-font-weight: bold;");
+                
+                Label qualityValue = new Label(stream.getQuality());
+                qualityValue.getStyleClass().clear();
+                qualityValue.getStyleClass().addAll("badge", "badge-termine"); // badge vert
+                
+                HBox qualityRow = new HBox(10, qualityLabel, qualityValue);
+                qualityRow.setAlignment(Pos.CENTER_LEFT);
+                
+                Label urlLabel = new Label("Lien du flux :");
+                urlLabel.setStyle("-fx-font-weight: bold;");
+                
+                TextField urlDisplay = new TextField(stream.getUrl());
+                urlDisplay.setEditable(false);
+                urlDisplay.getStyleClass().add("text-input");
+                urlDisplay.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 11px;");
+                HBox.setHgrow(urlDisplay, Priority.ALWAYS);
+                
+                content.getChildren().addAll(qualityRow, urlLabel, urlDisplay);
+                alert.getDialogPane().setContent(content);
+                
+                ButtonType lancerBtnType = new ButtonType("Lancer", ButtonBar.ButtonData.OK_DONE);
+                alert.getDialogPane().getButtonTypes().add(0, lancerBtnType);
+                
+                alert.showAndWait().ifPresent(response -> {
+                    if (response == lancerBtnType) {
+                        Platform.runLater(() -> playActiveStream(parentStage));
+                    }
+                });
             } else {
                 // Plus de 1 résultat : proposer un dialogue de choix
                 ChoiceDialog<com.eyone.ffmpegstudio.service.StreamDetector.DetectedStream> dialog = new ChoiceDialog<>(results.get(0), results);
                 dialog.setTitle("Flux Détectés");
                 dialog.setHeaderText("Plusieurs flux ou qualités vidéo ont été trouvés.\nChoisissez le flux à charger dans l'application :");
                 dialog.setContentText("Qualité :");
-                dialog.initOwner(parentStage);
-                dialog.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-                dialog.getDialogPane().getStyleClass().add("card-panel");
+                styleDialog(dialog, parentStage);
                 dialog.getDialogPane().setPrefWidth(550);
+                
+                ButtonType lancerBtnType = new ButtonType("Lancer", ButtonBar.ButtonData.OK_DONE);
+                dialog.getDialogPane().getButtonTypes().add(0, lancerBtnType);
+                
+                final boolean[] shouldPlay = {false};
+                dialog.setResultConverter(buttonType -> {
+                    if (buttonType == ButtonType.OK) {
+                        return dialog.getSelectedItem();
+                    } else if (buttonType == lancerBtnType) {
+                        shouldPlay[0] = true;
+                        return dialog.getSelectedItem();
+                    }
+                    return null;
+                });
                 
                 dialog.showAndWait().ifPresent(selectedStream -> {
                     urlField.setText(selectedStream.getUrl());
+                    if (shouldPlay[0]) {
+                        Platform.runLater(() -> playActiveStream(parentStage));
+                    }
                 });
             }
         });
@@ -1020,9 +1074,7 @@ public class App extends Application {
             alert.setTitle("Erreur de Détection");
             alert.setHeaderText("Impossible d'analyser la page.");
             alert.setContentText(ex != null ? ex.getMessage() : "Erreur inconnue");
-            alert.initOwner(parentStage);
-            alert.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-            alert.getDialogPane().getStyleClass().add("card-panel");
+            styleDialog(alert, parentStage);
             alert.showAndWait();
         });
 
@@ -1071,13 +1123,18 @@ public class App extends Application {
     private void addJob() {
         Preset preset = presetBox.getValue();
         String source = getSourceInput();
+        Stage parentStage = (Stage) presetBox.getScene().getWindow();
         if (source == null || preset == null) {
-            new Alert(Alert.AlertType.WARNING, "Choisis d'abord un fichier source ou saisis une URL.").showAndWait();
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Choisis d'abord un fichier source ou saisis une URL.");
+            styleDialog(alert, parentStage);
+            alert.showAndWait();
             return;
         }
         File output = getOutputFile(preset);
         if (output == null) {
-            new Alert(Alert.AlertType.WARNING, "Spécifie d'abord un fichier de destination.").showAndWait();
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Spécifie d'abord un fichier de destination.");
+            styleDialog(alert, parentStage);
+            alert.showAndWait();
             return;
         }
         Job job = new Job(
@@ -1237,6 +1294,18 @@ public class App extends Application {
             toggle.run();
         } else {
             titleLabel.setText("▼ " + originalText);
+        }
+    }
+
+    private void styleDialog(Dialog<?> dialog, Stage parentStage) {
+        if (parentStage != null) {
+            dialog.initOwner(parentStage);
+        }
+        dialog.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+        dialog.getDialogPane().getStyleClass().add("card-panel");
+        if (parentStage != null && parentStage.getScene() != null && 
+            parentStage.getScene().getRoot().getStyleClass().contains("light-theme")) {
+            dialog.getDialogPane().getStyleClass().add("light-theme");
         }
     }
 
