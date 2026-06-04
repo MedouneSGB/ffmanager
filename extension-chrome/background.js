@@ -1,5 +1,143 @@
 // Service Worker de l'extension
 let detectedStreams = {};
+let hlsMappings = {}; // Association URL propre de variante -> Résolution (ex: "1080")
+
+function getCleanUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.origin + urlObj.pathname;
+  } catch (e) {
+    return url.split('?')[0].split('#')[0];
+  }
+}
+
+function guessResolutionFromUrl(url) {
+  const cleanUrl = getCleanUrl(url);
+  
+  // Chercher d'abord un motif comme "1080p", "720p", "480p", "360p", "2160p", "1440p"
+  const pMatch = cleanUrl.match(/(\d{3,4})[pP]/);
+  if (pMatch) {
+    const res = pMatch[1];
+    if (["2160", "1440", "1080", "720", "480", "360", "240"].includes(res)) {
+      return res;
+    }
+  }
+  
+  // Chercher des nombres autonomes de résolutions courantes
+  const commonResolutions = ["2160", "1440", "1080", "720", "480", "360", "240"];
+  for (const res of commonResolutions) {
+    const regex = new RegExp(`[^0-9a-zA-Z]${res}[^0-9a-zA-Z]|^${res}[^0-9a-zA-Z]|[^0-9a-zA-Z]${res}$`);
+    if (regex.test(cleanUrl)) {
+      return res;
+    }
+  }
+  return null;
+}
+
+async function checkAndParseMasterPlaylist(masterUrl, tabId) {
+  try {
+    const response = await fetch(masterUrl);
+    const text = await response.text();
+    
+    if (text.includes("#EXT-X-STREAM-INF")) {
+      // C'est un master playlist adaptatif
+      updateStreamQuality(tabId, masterUrl, "Flux HLS - Multi (Adaptatif)");
+      
+      const lines = text.split("\n");
+      let currentResolution = null;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith("#EXT-X-STREAM-INF:")) {
+          const resMatch = line.match(/RESOLUTION=(\d+)x(\d+)/);
+          if (resMatch) {
+            currentResolution = resMatch[2]; // ex: "1080"
+          }
+        } else if (line && !line.startsWith("#") && currentResolution) {
+          try {
+            let variantUrl = new URL(line, masterUrl).toString();
+            const cleanVariant = getCleanUrl(variantUrl);
+            hlsMappings[cleanVariant] = currentResolution;
+            
+            // Si la variante avait déjà été interceptée, mettre à jour son label
+            updateStreamQuality(tabId, variantUrl, `Flux HLS - ${currentResolution}`);
+          } catch (e) {
+            // Ignorer les erreurs d'URL invalides
+          }
+          currentResolution = null;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Erreur de lecture HLS :", e);
+  }
+}
+
+function updateStreamQuality(tabId, url, quality) {
+  if (detectedStreams[tabId]) {
+    const cleanTargetUrl = getCleanUrl(url);
+    const stream = detectedStreams[tabId].find(s => getCleanUrl(s.url) === cleanTargetUrl);
+    if (stream) {
+      stream.quality = quality;
+      // Notifier la popup si elle est ouverte pour mise à jour dynamique
+      chrome.runtime.sendMessage({
+        action: "streamUpdated",
+        url: stream.url,
+        quality: quality
+      }).catch(() => {});
+    }
+  }
+}
+
+function addStream(tabId, url) {
+  if (!detectedStreams[tabId]) {
+    detectedStreams[tabId] = [];
+  }
+  
+  if (!detectedStreams[tabId].some(s => s.url === url)) {
+    let quality = "Auto/Direct";
+    const cleanUrl = getCleanUrl(url);
+    
+    if (hlsMappings[cleanUrl]) {
+      quality = `Flux HLS - ${hlsMappings[cleanUrl]}`;
+    } else if (url.includes(".m3u8")) {
+      const guessedRes = guessResolutionFromUrl(url);
+      if (guessedRes) {
+        quality = `Flux HLS - ${guessedRes}`;
+      } else {
+        quality = "Flux HLS"; // Valeur neutre par défaut si non détectée
+      }
+    } else if (url.includes(".mpd")) {
+      const guessedRes = guessResolutionFromUrl(url);
+      if (guessedRes) {
+        quality = `Flux DASH - ${guessedRes}`;
+      } else {
+        quality = "Flux DASH";
+      }
+    } else {
+      const guessedRes = guessResolutionFromUrl(url);
+      if (guessedRes) {
+        quality = `${guessedRes}p`;
+      } else if (url.endsWith(".mp4")) {
+        quality = "Direct MP4";
+      } else if (url.endsWith(".webm")) {
+        quality = "Direct WebM";
+      }
+    }
+    
+    detectedStreams[tabId].push({ url, quality });
+    
+    // Mettre à jour le badge de l'icône de l'extension (nombre de flux)
+    chrome.action.setBadgeText({
+      tabId: tabId,
+      text: detectedStreams[tabId].length.toString()
+    });
+    chrome.action.setBadgeBackgroundColor({
+      tabId: tabId,
+      color: "#7c4dff" // Couleur d'accent violet
+    });
+  }
+}
 
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
@@ -9,38 +147,12 @@ chrome.webRequest.onBeforeRequest.addListener(
       const tabId = details.tabId;
       if (tabId < 0) return;
       
-      if (!detectedStreams[tabId]) {
-        detectedStreams[tabId] = [];
+      // Si c'est du HLS, lancer l'analyse en arrière-plan
+      if (url.includes(".m3u8") && !hlsMappings[getCleanUrl(url)]) {
+        checkAndParseMasterPlaylist(url, tabId);
       }
       
-      // Éviter les doublons exacts
-      if (!detectedStreams[tabId].some(s => s.url === url)) {
-        // Deviner la qualité ou le format
-        let quality = "Auto/Direct";
-        if (url.includes(".m3u8")) {
-          let qual = "1080";
-          if (url.includes("720")) qual = "720";
-          else if (url.includes("480")) qual = "480";
-          else if (url.includes("360")) qual = "360";
-          quality = `Flux HLS - ${qual}`;
-        } else if (url.includes("1080")) quality = "1080p";
-        else if (url.includes("720")) quality = "720p";
-        else if (url.includes("480")) quality = "480p";
-        else if (url.includes("360")) quality = "360p";
-        else if (url.endsWith(".mp4")) quality = "Direct MP4";
-        
-        detectedStreams[tabId].push({ url, quality });
-        
-        // Mettre à jour le badge de l'icône de l'extension (nombre de flux)
-        chrome.action.setBadgeText({
-          tabId: tabId,
-          text: detectedStreams[tabId].length.toString()
-        });
-        chrome.action.setBadgeBackgroundColor({
-          tabId: tabId,
-          color: "#7c4dff" // Couleur d'accent violet
-        });
-      }
+      addStream(tabId, url);
     }
   },
   { urls: ["<all_urls>"] }

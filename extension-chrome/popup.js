@@ -50,6 +50,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // Écouter les mises à jour de flux en temps réel (ex: résolution résolue asynchronement)
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === "streamUpdated") {
+      const items = streamList.querySelectorAll(".stream-item");
+      items.forEach((item) => {
+        const urlDiv = item.querySelector(".stream-url");
+        if (urlDiv && urlDiv.textContent === message.url) {
+          const badge = item.querySelector(".badge");
+          if (badge) {
+            badge.textContent = message.quality;
+          }
+        }
+      });
+    }
+  });
+
   // Envoyer l'URL du flux à l'application Java via le serveur HTTP local
   function sendToApp(url, play) {
     fetch("http://localhost:8555/add-stream", {
