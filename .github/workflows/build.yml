@@ -41,6 +41,11 @@ jobs:
                  --type app-image `
                  --icon src/main/resources/icon.ico
 
+    - name: Copy Chrome Extension to Portable App Folder
+      shell: pwsh
+      run: |
+        Copy-Item -Path extension-chrome -Destination target/dist-portable/FFmpegStudio/extension-chrome -Recurse -Force
+
     - name: Create Zip of Portable App
       shell: pwsh
       run: |
@@ -48,17 +53,15 @@ jobs:
 
     - name: Build Standalone EXE Installer
       run: |
-        jpackage --input target/input-jar/ `
+        jpackage --app-image target/dist-portable/FFmpegStudio `
                  --dest target/dist-installer/ `
                  --name "FFmpegStudio" `
-                 --main-jar ffmpeg-studio-0.1.0.jar `
-                 --main-class com.eyone.ffmpegstudio.Launcher `
                  --type exe `
                  --win-menu `
                  --win-shortcut `
                  --vendor "FFmpeg Studio" `
-                 --app-version "0.1.0" `
-                 --icon src/main/resources/icon.ico
+                 --app-version "0.1.0"
+
 
     - name: Upload Shaded JAR Artifact
       uses: actions/upload-artifact@v4
