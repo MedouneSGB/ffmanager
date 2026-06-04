@@ -17,12 +17,17 @@ chrome.webRequest.onBeforeRequest.addListener(
       if (!detectedStreams[tabId].some(s => s.url === url)) {
         // Deviner la qualité ou le format
         let quality = "Auto/Direct";
-        if (url.includes("1080")) quality = "1080p";
+        if (url.includes(".m3u8")) {
+          let qual = "1080";
+          if (url.includes("720")) qual = "720";
+          else if (url.includes("480")) qual = "480";
+          else if (url.includes("360")) qual = "360";
+          quality = `Flux HLS - ${qual}`;
+        } else if (url.includes("1080")) quality = "1080p";
         else if (url.includes("720")) quality = "720p";
         else if (url.includes("480")) quality = "480p";
         else if (url.includes("360")) quality = "360p";
         else if (url.endsWith(".mp4")) quality = "Direct MP4";
-        else if (url.includes(".m3u8")) quality = "Flux HLS";
         
         detectedStreams[tabId].push({ url, quality });
         
