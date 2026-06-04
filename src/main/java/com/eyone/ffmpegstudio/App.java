@@ -1348,14 +1348,17 @@ public class App extends Application {
                         String body = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))
                                 .lines().collect(Collectors.joining("\n"));
                         
+                        System.out.println("[DEBUG HTTP Server] Body recu: " + body);
                         String url = extractUrlFromJson(body);
                         boolean play = extractPlayFromJson(body);
+                        System.out.println("[DEBUG HTTP Server] URL extraite: " + url + " | play: " + play);
                         
                         if (url != null && !url.isEmpty()) {
                             Platform.runLater(() -> {
                                 urlSourceRadio.setSelected(true);
                                 urlField.setText(url);
                                 if (play) {
+                                    System.out.println("[DEBUG HTTP Server] Declenchement de playActiveStream...");
                                     playActiveStream(primaryStage);
                                 }
                             });
@@ -1401,9 +1404,7 @@ public class App extends Application {
 
     private boolean extractPlayFromJson(String json) {
         if (json == null) return false;
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"play\"\\s*:\\s*true");
-        java.util.regex.Matcher matcher = pattern.matcher(json);
-        return matcher.find();
+        return json.contains("\"play\":true") || json.contains("\"play\": true");
     }
 
     public static void main(String[] args) {
