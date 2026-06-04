@@ -410,22 +410,59 @@ public class App extends Application {
         ffmpegPath = prefs.get("ffmpegPath", "ffmpeg");
         ffprobePath = prefs.get("ffprobePath", "ffprobe");
         
-        // Validation et détection automatique sous Windows
         if (!checkBinaries(ffmpegPath, ffprobePath)) {
-            String[] commonDirs = {
-                "C:\\ffmpeg\\bin\\",
-                "C:\\Program Files\\ffmpeg\\bin\\",
-                "C:\\Program Files (x86)\\ffmpeg\\bin\\"
-            };
-            for (String dir : commonDirs) {
-                String ff = dir + "ffmpeg.exe";
-                String fp = dir + "ffprobe.exe";
-                if (checkBinaries(ff, fp)) {
-                    ffmpegPath = ff;
-                    ffprobePath = fp;
-                    prefs.put("ffmpegPath", ff);
-                    prefs.put("ffprobePath", fp);
-                    break;
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("win")) {
+                String[] commonDirs = {
+                    "C:\\ffmpeg\\bin\\",
+                    "C:\\Program Files\\ffmpeg\\bin\\",
+                    "C:\\Program Files (x86)\\ffmpeg\\bin\\"
+                };
+                for (String dir : commonDirs) {
+                    String ff = dir + "ffmpeg.exe";
+                    String fp = dir + "ffprobe.exe";
+                    if (checkBinaries(ff, fp)) {
+                        ffmpegPath = ff;
+                        ffprobePath = fp;
+                        prefs.put("ffmpegPath", ff);
+                        prefs.put("ffprobePath", fp);
+                        break;
+                    }
+                }
+            } else if (os.contains("mac")) {
+                String[] commonDirs = {
+                    "/opt/homebrew/bin/",
+                    "/usr/local/bin/",
+                    "/usr/bin/",
+                    "/opt/local/bin/"
+                };
+                for (String dir : commonDirs) {
+                    String ff = dir + "ffmpeg";
+                    String fp = dir + "ffprobe";
+                    if (checkBinaries(ff, fp)) {
+                        ffmpegPath = ff;
+                        ffprobePath = fp;
+                        prefs.put("ffmpegPath", ff);
+                        prefs.put("ffprobePath", fp);
+                        break;
+                    }
+                }
+            } else { // Linux et autres Unix
+                String[] commonDirs = {
+                    "/usr/bin/",
+                    "/usr/local/bin/",
+                    "/bin/"
+                };
+                for (String dir : commonDirs) {
+                    String ff = dir + "ffmpeg";
+                    String fp = dir + "ffprobe";
+                    if (checkBinaries(ff, fp)) {
+                        ffmpegPath = ff;
+                        ffprobePath = fp;
+                        prefs.put("ffmpegPath", ff);
+                        prefs.put("ffprobePath", fp);
+                        break;
+                    }
                 }
             }
         }
@@ -480,10 +517,16 @@ public class App extends Application {
         ffmpegField.setPrefWidth(300);
         Button browseFf = new Button("Parcourir...");
         browseFf.getStyleClass().add("btn-secondary");
+        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+        
         browseFf.setOnAction(e -> {
             FileChooser fc = new FileChooser();
-            fc.setTitle("Sélectionner ffmpeg.exe");
-            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable (*.exe)", "*.exe"));
+            fc.setTitle("Sélectionner ffmpeg" + (isWindows ? ".exe" : ""));
+            if (isWindows) {
+                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable (*.exe)", "*.exe"));
+            } else {
+                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable", "*"));
+            }
             File file = fc.showOpenDialog(dialog.getOwner());
             if (file != null) {
                 ffmpegField.setText(file.getAbsolutePath());
@@ -496,8 +539,12 @@ public class App extends Application {
         browseFp.getStyleClass().add("btn-secondary");
         browseFp.setOnAction(e -> {
             FileChooser fc = new FileChooser();
-            fc.setTitle("Sélectionner ffprobe.exe");
-            fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable (*.exe)", "*.exe"));
+            fc.setTitle("Sélectionner ffprobe" + (isWindows ? ".exe" : ""));
+            if (isWindows) {
+                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable (*.exe)", "*.exe"));
+            } else {
+                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable", "*"));
+            }
             File file = fc.showOpenDialog(dialog.getOwner());
             if (file != null) {
                 ffprobeField.setText(file.getAbsolutePath());
