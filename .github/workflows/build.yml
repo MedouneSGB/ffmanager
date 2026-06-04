@@ -3,6 +3,7 @@ name: Build JavaFX Application (Windows & macOS)
 on:
   push:
     branches: [ "main" ]
+    tags: [ "v*.*.*" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -157,3 +158,31 @@ jobs:
       with:
         name: ffmpeg-studio-installer-macos
         path: target/dist-installer/*.dmg
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-artifacts
+
+    - name: Structure and list artifacts
+      run: |
+        mkdir -p deploy
+        # Copy ZIP, EXE, and DMG files to the deploy directory
+        find release-artifacts/ -type f \( -name "*.zip" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} deploy/ \;
+        ls -la deploy/
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          deploy/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
