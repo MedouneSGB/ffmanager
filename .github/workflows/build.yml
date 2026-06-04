@@ -25,9 +25,15 @@ jobs:
     - name: Build with Maven (Shaded JAR)
       run: mvn clean package
 
+    - name: Prepare JPackage Input Directory
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Force -Path target/input-jar
+        Copy-Item target/ffmpeg-studio-0.1.0.jar target/input-jar/
+
     - name: Create Portable App Image (Directory)
       run: |
-        jpackage --input target/ `
+        jpackage --input target/input-jar/ `
                  --dest target/dist-portable/ `
                  --name "FFmpegStudio" `
                  --main-jar ffmpeg-studio-0.1.0.jar `
@@ -42,7 +48,7 @@ jobs:
 
     - name: Build Standalone EXE Installer
       run: |
-        jpackage --input target/ `
+        jpackage --input target/input-jar/ `
                  --dest target/dist-installer/ `
                  --name "FFmpegStudio" `
                  --main-jar ffmpeg-studio-0.1.0.jar `
