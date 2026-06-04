@@ -544,15 +544,28 @@ public class App extends Application {
 
     private void updateCustomOutputLabel(Preset preset) {
         if (customOutputFile != null) {
-            customOutputLabel.setText(customOutputFile.getAbsolutePath());
+            customOutputLabel.setText(getShortPath(customOutputFile.getAbsolutePath()));
         } else {
             File def = getOutputFile(preset);
             if (def != null) {
-                customOutputLabel.setText(def.getAbsolutePath() + " (Par défaut)");
+                customOutputLabel.setText(getShortPath(def.getAbsolutePath()) + " (Par défaut)");
             } else {
                 customOutputLabel.setText("Fichier de destination : Non spécifié");
             }
         }
+    }
+
+    private String getShortPath(String absolutePath) {
+        if (absolutePath == null) return "";
+        String userHome = System.getProperty("user.home");
+        if (absolutePath.startsWith(userHome)) {
+            String relative = absolutePath.substring(userHome.length());
+            if (relative.startsWith(java.io.File.separator + "Downloads")) {
+                return relative;
+            }
+            return "~" + relative;
+        }
+        return absolutePath;
     }
 
     private File deriveOutput(File source, Preset preset) {
