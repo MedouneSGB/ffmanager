@@ -385,14 +385,7 @@ public class App extends Application {
         }
         
         stage.setOnCloseRequest(e -> {
-            queue.shutdown();
-            if (mediaPlayer != null) {
-                mediaPlayer.stop();
-                mediaPlayer.dispose();
-            }
-            if (localServer != null) {
-                localServer.stop(0);
-            }
+            Platform.exit();
         });
         
         stage.show();
@@ -1410,7 +1403,12 @@ public class App extends Application {
                 }
             });
             
-            localServer.setExecutor(java.util.concurrent.Executors.newSingleThreadExecutor());
+            localServer.setExecutor(java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r);
+                t.setDaemon(true);
+                t.setName("LocalServer-Executor");
+                return t;
+            }));
             localServer.start();
             System.out.println("Mini-serveur HTTP démarré sur http://localhost:8555");
         } catch (Exception e) {
@@ -1431,6 +1429,24 @@ public class App extends Application {
     private boolean extractPlayFromJson(String json) {
         if (json == null) return false;
         return json.contains("\"play\":true") || json.contains("\"play\": true");
+    }
+
+    @Override
+    public void stop() throws Exception {
+        super.stop();
+        System.out.println("Arrêt en cours de l'application...");
+        if (queue != null) {
+            queue.shutdown();
+        }
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.dispose();
+        }
+        if (localServer != null) {
+            System.out.println("Arrêt du mini-serveur HTTP...");
+            localServer.stop(0);
+        }
+        System.exit(0);
     }
 
     public static void main(String[] args) {
