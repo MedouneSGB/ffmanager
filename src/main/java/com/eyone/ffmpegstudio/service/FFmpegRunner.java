@@ -41,6 +41,9 @@ public class FFmpegRunner {
     }
 
     private static boolean isExecutableAvailable(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return false;
+        }
         try {
             ProcessBuilder pb = new ProcessBuilder(path, "-version");
             pb.redirectErrorStream(true);
@@ -48,8 +51,13 @@ public class FFmpegRunner {
             p.getOutputStream().close();
             p.getInputStream().close();
             int exitCode = p.waitFor();
+            if (exitCode != 0) {
+                System.err.println("[WARN] FFmpegRunner check: '" + path + "' a retourné le code de sortie " + exitCode);
+            }
             return exitCode == 0;
         } catch (Exception e) {
+            System.err.println("[ERROR] Échec de la vérification de l'exécutable '" + path + "' : " + e.getMessage());
+            e.printStackTrace(System.err);
             return false;
         }
     }
