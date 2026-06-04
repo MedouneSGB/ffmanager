@@ -91,6 +91,7 @@ public class App extends Application {
     private java.io.File tempHlsDir;
     private Process activeTransmuxProcess;
     private javafx.concurrent.Task<String> activePrepTask;
+    private String activePrepUrl;
 
     @Override
     public void start(Stage stage) {
@@ -800,13 +801,15 @@ public class App extends Application {
     }
 
     private void playMedia(String source, Stage parentStage) {
+        String requestedUrl = source;
+        if (!source.startsWith("http://") && !source.startsWith("https://")) {
+            requestedUrl = new File(source).toURI().toString();
+        }
+
+        // 1. Détecter si la vidéo est déjà en cours de lecture
         if (mediaPlayer != null && activePlayerStage != null) {
             String currentSource = mediaPlayer.getMedia().getSource();
-            String requestedUrl = source;
-            if (!source.startsWith("http://") && !source.startsWith("https://")) {
-                requestedUrl = new File(source).toURI().toString();
-            }
-            if (currentSource.equals(requestedUrl) || (source.contains(".m3u8") && currentSource.contains("local-hls/playlist.m3u8"))) {
+            if (isSameBaseUrl(currentSource, requestedUrl) || (source.contains(".m3u8") && currentSource.contains("local-hls/playlist.m3u8"))) {
                 Platform.runLater(() -> {
                     if (activePlayerStage != null) {
                         activePlayerStage.show();
@@ -818,6 +821,15 @@ public class App extends Application {
                 return;
             }
         }
+
+        // 2. Détecter si le flux est déjà en cours de préparation active (évite les spams de requêtes)
+        if (activePrepTask != null && activePrepUrl != null) {
+            if (isSameBaseUrl(activePrepUrl, requestedUrl)) {
+                System.out.println("[PLAY] Le flux est déjà en cours de préparation. Nouvelle requête identique ignorée.");
+                return;
+            }
+        }
+
         cleanupTransmux();
         if (source.startsWith("http://") || source.startsWith("https://")) {
             if (source.contains(".m3u8")) {
@@ -888,6 +900,8 @@ public class App extends Application {
                 prepTask.setOnSucceeded(evt -> {
                     loadingAlert.close();
                     if (activePrepTask != prepTask) return;
+                    activePrepUrl = null;
+                    activePrepTask = null;
                     String localUrl = prepTask.getValue();
                     openMediaPlayerStage(localUrl, parentStage, true);
                 });
@@ -895,6 +909,8 @@ public class App extends Application {
                 prepTask.setOnFailed(evt -> {
                     loadingAlert.close();
                     if (activePrepTask != prepTask) return;
+                    activePrepUrl = null;
+                    activePrepTask = null;
                     Throwable ex = prepTask.getException();
                     cleanupTransmux();
                     Alert alert = new Alert(Alert.AlertType.ERROR);
@@ -907,8 +923,13 @@ public class App extends Application {
 
                 prepTask.setOnCancelled(evt -> {
                     loadingAlert.close();
+                    if (activePrepTask == prepTask) {
+                        activePrepUrl = null;
+                        activePrepTask = null;
+                    }
                 });
                 
+                activePrepUrl = requestedUrl;
                 activePrepTask = prepTask;
                 new Thread(prepTask).start();
                 loadingAlert.show();
@@ -1435,6 +1456,15 @@ public class App extends Application {
             }
         }
         return sb.toString();
+    }
+
+    private boolean isSameBaseUrl(String url1, String url2) {
+        if (url1 == null || url2 == null) return false;
+        int q1 = url1.indexOf('?');
+        String base1 = q1 >= 0 ? url1.substring(0, q1) : url1;
+        int q2 = url2.indexOf('?');
+        String base2 = q2 >= 0 ? url2.substring(0, q2) : url2;
+        return base1.trim().equalsIgnoreCase(base2.trim());
     }
 
     private void addJob() {
@@ -2138,6 +2168,7 @@ public class App extends Application {
             activePrepTask.cancel();
             activePrepTask = null;
         }
+        activePrepUrl = null;
         if (activeTransmuxProcess != null) {
             System.out.println("[Transmux] Arrêt du processus FFmpeg...");
             stopProcess(activeTransmuxProcess);
