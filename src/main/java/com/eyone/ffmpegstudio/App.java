@@ -337,9 +337,9 @@ public class App extends Application {
 
         // Configuration du pliage/dépliage interactif des cartes (Accordéon)
         makeCollapsible(srcCard, srcLabel, srcLabel, srcLabel, false);
-        makeCollapsible(presetCard, prsLabel, prsLabel, prsLabel, false);
+        makeCollapsible(presetCard, prsLabel, prsLabel, prsLabel, true); // Démarre replié
         makeCollapsible(advCard, advLabel, advLabel, advLabel, true); // Démarre replié
-        makeCollapsible(previewCard, previewHeader, cmdLabel, cmdLabel, false);
+        makeCollapsible(previewCard, previewHeader, cmdLabel, cmdLabel, true); // Démarre replié
         
         controlsContainer.getChildren().addAll(srcCard, presetCard, advCard, previewCard, addBtn);
         
