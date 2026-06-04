@@ -73,6 +73,8 @@ Que vous souhaitiez convertir des fichiers locaux, extraire des pistes audio, t�
 *   **Java Development Kit (JDK) 21** ou supérieur.
 *   **Maven** pour la gestion des dépendances et de la compilation.
 *   **FFmpeg** et **ffprobe** installés et configurés dans votre variable d'environnement `PATH` (ou configurés manuellement via l'interface).
+    *   *Installation sous Windows* : `winget install ffmpeg`
+    *   *Liens utiles* : [Dépôt GitHub FFmpeg](https://github.com/FFmpeg/FFmpeg) | [Site officiel FFmpeg](https://ffmpeg.org/)
 
 ### Compilation
 Pour compiler et packager l'application sous forme de JAR "fat-shaded" autonome contenant toutes les dépendances (y compris JavaFX et Jsoup) :
