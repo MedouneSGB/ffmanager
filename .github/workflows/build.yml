@@ -1,4 +1,4 @@
-name: Build JavaFX Application (JAR & EXE)
+name: Build JavaFX Application (Windows & macOS)
 
 on:
   push:
@@ -9,7 +9,10 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
     - name: Checkout repository
@@ -22,61 +25,135 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
+    - name: Extract Version from pom.xml
+      id: get_version
+      run: |
+        VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+      shell: bash
+
     - name: Build with Maven (Shaded JAR)
       run: mvn clean package
 
     - name: Prepare JPackage Input Directory
-      shell: pwsh
       run: |
-        New-Item -ItemType Directory -Force -Path target/input-jar
-        Copy-Item target/ffmpeg-studio-0.1.0.jar target/input-jar/
+        mkdir -p target/input-jar
+        cp target/ffmpeg-studio-${{ steps.get_version.outputs.version }}.jar target/input-jar/
+      shell: bash
 
-    - name: Create Portable App Image (Directory)
+    # Etape de conversion de l'icone PNG en format ICNS sous macOS
+    - name: Convert PNG to ICNS (macOS)
+      if: matrix.os == 'macos-latest'
       run: |
-        jpackage --input target/input-jar/ `
-                 --dest target/dist-portable/ `
-                 --name "FFmpegStudio" `
-                 --main-jar ffmpeg-studio-0.1.0.jar `
-                 --main-class com.eyone.ffmpegstudio.Launcher `
-                 --type app-image `
+        mkdir -p icon.iconset
+        sips -z 16 16     src/main/resources/icon.png --out icon.iconset/icon_16x16.png
+        sips -z 32 32     src/main/resources/icon.png --out icon.iconset/icon_16x16@2x.png
+        sips -z 32 32     src/main/resources/icon.png --out icon.iconset/icon_32x32.png
+        sips -z 64 64     src/main/resources/icon.png --out icon.iconset/icon_32x32@2x.png
+        sips -z 128 128   src/main/resources/icon.png --out icon.iconset/icon_128x128.png
+        sips -z 256 256   src/main/resources/icon.png --out icon.iconset/icon_128x128@2x.png
+        sips -z 256 256   src/main/resources/icon.png --out icon.iconset/icon_256x256.png
+        sips -z 512 512   src/main/resources/icon.png --out icon.iconset/icon_256x256@2x.png
+        sips -z 512 512   src/main/resources/icon.png --out icon.iconset/icon_512x512.png
+        sips -z 1024 1024 src/main/resources/icon.png --out icon.iconset/icon_512x512@2x.png
+        iconutil -c icns icon.iconset -o src/main/resources/icon.icns
+      shell: bash
+
+    - name: Create Portable App Image (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        jpackage --input target/input-jar/ \
+                 --dest target/dist-portable/ \
+                 --name "FFmpegStudio" \
+                 --main-jar ffmpeg-studio-${{ steps.get_version.outputs.version }}.jar \
+                 --main-class com.eyone.ffmpegstudio.Launcher \
+                 --type app-image \
                  --icon src/main/resources/icon.ico
+      shell: bash
 
-    - name: Copy Chrome Extension to Portable App Folder
-      shell: pwsh
+    - name: Create Portable App Image (macOS)
+      if: matrix.os == 'macos-latest'
       run: |
-        Copy-Item -Path extension-chrome -Destination target/dist-portable/FFmpegStudio/extension-chrome -Recurse -Force
+        jpackage --input target/input-jar/ \
+                 --dest target/dist-portable/ \
+                 --name "FFmpegStudio" \
+                 --main-jar ffmpeg-studio-${{ steps.get_version.outputs.version }}.jar \
+                 --main-class com.eyone.ffmpegstudio.Launcher \
+                 --type app-image \
+                 --icon src/main/resources/icon.icns
+      shell: bash
 
-    - name: Create Zip of Portable App
-      shell: pwsh
+    - name: Copy Chrome Extension & Zip Portable (Windows)
+      if: matrix.os == 'windows-latest'
       run: |
-        Compress-Archive -Path target/dist-portable/FFmpegStudio -DestinationPath target/FFmpegStudio-Portable-Windows.zip
+        cp -r extension-chrome target/dist-portable/FFmpegStudio/extension-chrome
+        powershell -Command "Compress-Archive -Path target/dist-portable/FFmpegStudio -DestinationPath target/FFmpegStudio-Portable-Windows.zip"
+      shell: bash
 
-    - name: Build Standalone EXE Installer
+    - name: Copy Chrome Extension & Zip Portable (macOS)
+      if: matrix.os == 'macos-latest'
       run: |
-        jpackage --app-image target/dist-portable/FFmpegStudio `
-                 --dest target/dist-installer/ `
-                 --name "FFmpegStudio" `
-                 --type exe `
-                 --win-menu `
-                 --win-shortcut `
-                 --vendor "FFmpeg Studio" `
-                 --app-version "0.1.0"
+        mkdir -p target/dist-portable-mac
+        cp -r target/dist-portable/FFmpegStudio.app target/dist-portable-mac/
+        cp -r extension-chrome target/dist-portable-mac/
+        cd target/dist-portable-mac
+        zip -r ../FFmpegStudio-Portable-macOS.zip *
+      shell: bash
 
+    - name: Build Standalone EXE Installer (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        jpackage --app-image target/dist-portable/FFmpegStudio \
+                 --dest target/dist-installer/ \
+                 --name "FFmpegStudio" \
+                 --type exe \
+                 --win-menu \
+                 --win-shortcut \
+                 --vendor "FFmpeg Studio" \
+                 --app-version "${{ steps.get_version.outputs.version }}"
+      shell: bash
+
+    - name: Build Standalone DMG Installer (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        jpackage --app-image target/dist-portable/FFmpegStudio.app \
+                 --dest target/dist-installer/ \
+                 --name "FFmpegStudio" \
+                 --type dmg \
+                 --vendor "FFmpeg Studio" \
+                 --app-version "${{ steps.get_version.outputs.version }}"
+      shell: bash
 
     - name: Upload Shaded JAR Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ffmpeg-studio-jar
-        path: target/ffmpeg-studio-0.1.0.jar
+        name: ffmpeg-studio-jar-${{ matrix.os }}
+        path: target/ffmpeg-studio-${{ steps.get_version.outputs.version }}.jar
 
     - name: Upload Portable Windows ZIP Artifact
+      if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v4
       with:
         name: ffmpeg-studio-portable-windows
         path: target/FFmpegStudio-Portable-Windows.zip
 
+    - name: Upload Portable macOS ZIP Artifact
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-studio-portable-macos
+        path: target/FFmpegStudio-Portable-macOS.zip
+
     - name: Upload EXE Installer Artifact
+      if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v4
       with:
         name: ffmpeg-studio-installer-windows
         path: target/dist-installer/*.exe
+
+    - name: Upload DMG Installer Artifact
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-studio-installer-macos
+        path: target/dist-installer/*.dmg
