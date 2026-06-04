@@ -86,8 +86,18 @@ public class App extends Application {
     private HttpServer localServer;
     private Stage primaryStage;
 
+    // Transmuxing local HLS
+    private java.io.File tempHlsDir;
+    private Process activeTransmuxProcess;
+    private javafx.concurrent.Task<String> activePrepTask;
+
     @Override
     public void start(Stage stage) {
+        if (checkAndNotifyExistingInstance()) {
+            Platform.exit();
+            System.exit(0);
+            return;
+        }
         this.primaryStage = stage;
         // Chargement des chemins FFmpeg
         initFFmpegPaths();
@@ -684,27 +694,117 @@ public class App extends Application {
     }
 
     private void playMedia(String source, Stage parentStage) {
-        // Conversion en URI si fichier local
+        cleanupTransmux();
+        if (source.startsWith("http://") || source.startsWith("https://")) {
+            if (source.contains(".m3u8")) {
+                Alert loadingAlert = new Alert(Alert.AlertType.INFORMATION);
+                loadingAlert.setTitle("Préparation du flux");
+                loadingAlert.setHeaderText("Connexion et préparation du flux vidéo...");
+                loadingAlert.setContentText("Veuillez patienter pendant que FFmpeg initialise la lecture locale...");
+                styleDialog(loadingAlert, parentStage);
+                
+                ProgressBar pbIndicator = new ProgressBar(-1);
+                pbIndicator.setMaxWidth(Double.MAX_VALUE);
+                VBox contentBox = new VBox(10, new Label("Analyse et conversion des segments..."), pbIndicator);
+                contentBox.setPadding(new Insets(10));
+                loadingAlert.getDialogPane().setContent(contentBox);
+                
+                javafx.concurrent.Task<String> prepTask = new javafx.concurrent.Task<>() {
+                    @Override
+                    protected String call() throws Exception {
+                        cleanupTransmux();
+                        
+                        tempHlsDir = java.nio.file.Files.createTempDirectory("ffmpeg-studio-hls").toFile();
+                        File playlistFile = new File(tempHlsDir, "playlist.m3u8");
+                        File firstSegFile = new File(tempHlsDir, "seg_000.ts");
+                        
+                        List<String> cmd = new java.util.ArrayList<>();
+                        cmd.add(ffmpegPath);
+                        cmd.add("-y");
+                        cmd.add("-i");
+                        cmd.add(source);
+                        cmd.add("-c");
+                        cmd.add("copy");
+                        cmd.add("-f");
+                        cmd.add("hls");
+                        cmd.add("-hls_time");
+                        cmd.add("3");
+                        cmd.add("-hls_list_size");
+                        cmd.add("0");
+                        cmd.add("-hls_segment_filename");
+                        cmd.add(new File(tempHlsDir, "seg_%03d.ts").getAbsolutePath());
+                        cmd.add(playlistFile.getAbsolutePath());
+                        
+                        System.out.println("[Transmux] Lancement de la commande : " + String.join(" ", cmd));
+                        ProcessBuilder pb = new ProcessBuilder(cmd);
+                        pb.redirectErrorStream(true);
+                        pb.redirectOutput(ProcessBuilder.Redirect.to(new File(tempHlsDir, "transmux.log")));
+                        
+                        activeTransmuxProcess = pb.start();
+                        
+                        long start = System.currentTimeMillis();
+                        while (System.currentTimeMillis() - start < 10000) { // 10s timeout
+                            if (playlistFile.exists() && firstSegFile.exists()) {
+                                Thread.sleep(200); // laisser le temps d'écrire
+                                return "http://localhost:8555/local-hls/playlist.m3u8";
+                            }
+                            if (!activeTransmuxProcess.isAlive()) {
+                                int exit = activeTransmuxProcess.exitValue();
+                                if (exit == 0 && playlistFile.exists() && firstSegFile.exists()) {
+                                    return "http://localhost:8555/local-hls/playlist.m3u8";
+                                }
+                                throw new RuntimeException("FFmpeg s'est arrêté prématurément (Code " + exit + ").");
+                            }
+                            Thread.sleep(150);
+                        }
+                        throw new RuntimeException("Délai d'attente de 10 secondes dépassé pour la génération du flux local.");
+                    }
+                };
+                
+                prepTask.setOnSucceeded(evt -> {
+                    loadingAlert.close();
+                    if (activePrepTask != prepTask) return;
+                    String localUrl = prepTask.getValue();
+                    openMediaPlayerStage(localUrl, parentStage, true);
+                });
+                
+                prepTask.setOnFailed(evt -> {
+                    loadingAlert.close();
+                    if (activePrepTask != prepTask) return;
+                    Throwable ex = prepTask.getException();
+                    cleanupTransmux();
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("Erreur de Lecture");
+                    alert.setHeaderText("Impossible d'ouvrir ce flux vidéo.");
+                    alert.setContentText("FFmpeg n'a pas pu initialiser la lecture locale.\n\nDétail : " + (ex != null ? ex.getMessage() : "Inconnu"));
+                    styleDialog(alert, parentStage);
+                    alert.showAndWait();
+                });
+
+                prepTask.setOnCancelled(evt -> {
+                    loadingAlert.close();
+                });
+                
+                activePrepTask = prepTask;
+                new Thread(prepTask).start();
+                loadingAlert.show();
+                return;
+            }
+        }
+        
+        // Fichier local ou URL directe
         String mediaUrl;
         if (!source.startsWith("http://") && !source.startsWith("https://")) {
             mediaUrl = new File(source).toURI().toString();
         } else {
             mediaUrl = source;
-            if (mediaUrl.contains(".m3u8")) {
-                try {
-                    mediaUrl = "http://localhost:8555/proxy-m3u8?url=" + java.net.URLEncoder.encode(mediaUrl, "UTF-8");
-                } catch (Exception e) {
-                    // Fallback
-                }
-            }
         }
+        openMediaPlayerStage(mediaUrl, parentStage, false);
+    }
 
+    private void openMediaPlayerStage(String mediaUrl, Stage parentStage, boolean isLocalHls) {
         try {
-            // Arrêter la lecture en cours si existante
-            if (mediaPlayer != null) {
-                mediaPlayer.stop();
-                mediaPlayer.dispose();
-            }
+            disposeMediaPlayer();
 
             Media media = new Media(mediaUrl);
             mediaPlayer = new MediaPlayer(media);
@@ -961,10 +1061,9 @@ public class App extends Application {
                 idleTimeout.stop();
                 fadeOut.stop();
                 fadeIn.stop();
-                if (mediaPlayer != null) {
-                    mediaPlayer.stop();
-                    mediaPlayer.dispose();
-                    mediaPlayer = null;
+                disposeMediaPlayer();
+                if (isLocalHls) {
+                    cleanupTransmux();
                 }
             });
 
@@ -1449,6 +1548,32 @@ public class App extends Application {
     private void startLocalServer() {
         try {
             localServer = HttpServer.create(new InetSocketAddress("localhost", 8555), 0);
+            localServer.createContext("/show", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws java.io.IOException {
+                    if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+                        exchange.sendResponseHeaders(204, -1);
+                        return;
+                    }
+                    Platform.runLater(() -> {
+                        if (primaryStage != null) {
+                            primaryStage.show();
+                            primaryStage.toFront();
+                            primaryStage.setIconified(false);
+                        }
+                    });
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    byte[] response = "{\"status\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, response.length);
+                    OutputStream os = exchange.getResponseBody();
+                    os.write(response);
+                    os.close();
+                }
+            });
             localServer.createContext("/add-stream", new HttpHandler() {
                 @Override
                 public void handle(HttpExchange exchange) throws java.io.IOException {
@@ -1594,6 +1719,52 @@ public class App extends Application {
                     exchange.sendResponseHeaders(404, -1);
                 }
             });
+
+            localServer.createContext("/local-hls", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws java.io.IOException {
+                    // CORS preflight (OPTIONS)
+                    if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, OPTIONS");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+                        exchange.sendResponseHeaders(204, -1);
+                        return;
+                    }
+                    
+                    if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        String path = exchange.getRequestURI().getPath(); // /local-hls/playlist.m3u8 etc.
+                        String prefix = "/local-hls/";
+                        if (path.startsWith(prefix) && tempHlsDir != null && tempHlsDir.exists()) {
+                            String fileName = path.substring(prefix.length());
+                            if (!fileName.contains("..")) {
+                                File file = new File(tempHlsDir, fileName);
+                                if (file.exists() && file.isFile()) {
+                                    byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
+                                    
+                                    String contentType = "application/octet-stream";
+                                    if (fileName.endsWith(".m3u8")) {
+                                        contentType = "application/vnd.apple.mpegurl";
+                                    } else if (fileName.endsWith(".ts")) {
+                                        contentType = "video/MP2T";
+                                    }
+                                    
+                                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                                    exchange.getResponseHeaders().add("Content-Type", contentType);
+                                    exchange.sendResponseHeaders(200, fileBytes.length);
+                                    OutputStream os = exchange.getResponseBody();
+                                    os.write(fileBytes);
+                                    os.close();
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(404, -1);
+                }
+            });
             
             localServer.setExecutor(java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r);
@@ -1724,6 +1895,98 @@ public class App extends Application {
         return json.contains("\"play\":true") || json.contains("\"play\": true");
     }
 
+    private void stopProcess(Process process) {
+        if (process != null) {
+            try {
+                process.destroy();
+                process.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                if (process.isAlive()) {
+                    process.destroyForcibly();
+                }
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+    }
+
+    private void deleteDir(File dir) {
+        if (dir != null && dir.exists()) {
+            try {
+                File[] files = dir.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        f.delete();
+                    }
+                }
+                dir.delete();
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+    }
+
+    private void disposeMediaPlayer() {
+        final MediaPlayer oldPlayer = mediaPlayer;
+        if (oldPlayer != null) {
+            mediaPlayer = null;
+            Runnable r = () -> {
+                try {
+                    oldPlayer.stop();
+                    // Différer le dispose au prochain pulse JavaFX pour laisser à stop() le temps d'initier le nettoyage GStreamer
+                    Platform.runLater(() -> {
+                        try {
+                            oldPlayer.dispose();
+                        } catch (Exception ex) {
+                            // Ignore
+                        }
+                    });
+                } catch (Exception ex) {
+                    // Ignore
+                }
+            };
+            if (Platform.isFxApplicationThread()) {
+                r.run();
+            } else {
+                Platform.runLater(r);
+            }
+        }
+    }
+
+    private synchronized void cleanupTransmux() {
+        if (activePrepTask != null) {
+            activePrepTask.cancel();
+            activePrepTask = null;
+        }
+        if (activeTransmuxProcess != null) {
+            System.out.println("[Transmux] Arrêt du processus FFmpeg...");
+            stopProcess(activeTransmuxProcess);
+            activeTransmuxProcess = null;
+        }
+        if (tempHlsDir != null) {
+            System.out.println("[Transmux] Nettoyage des fichiers temporaires dans " + tempHlsDir.getAbsolutePath());
+            deleteDir(tempHlsDir);
+            tempHlsDir = null;
+        }
+    }
+
+    private boolean checkAndNotifyExistingInstance() {
+        try {
+            java.net.URL url = new java.net.URL("http://localhost:8555/show");
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(1000);
+            conn.setReadTimeout(1000);
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                System.out.println("Une autre instance est déjà en cours d'exécution. Notification envoyée.");
+                return true;
+            }
+        } catch (Exception e) {
+            // Le port est libre ou l'instance n'a pas répondu
+        }
+        return false;
+    }
+
     @Override
     public void stop() throws Exception {
         super.stop();
@@ -1738,14 +2001,12 @@ public class App extends Application {
         if (queue != null) {
             queue.shutdown();
         }
-        if (mediaPlayer != null) {
-            mediaPlayer.stop();
-            mediaPlayer.dispose();
-        }
+        disposeMediaPlayer();
         if (localServer != null) {
             System.out.println("Arrêt du mini-serveur HTTP...");
             localServer.stop(0);
         }
+        cleanupTransmux();
         System.exit(0);
     }
 
