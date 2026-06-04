@@ -28,26 +28,26 @@
 }
 
 .root.light-theme {
-    /* Définition des couleurs du thème clair */
-    bg-primary: #f0f2f5;
-    bg-card: #ffffff;
-    bg-input: #f1f3f7;
-    bg-input-focus: #e2e6f0;
-    border-color: #d8dbe0;
-    border-input: #cbd5e1;
-    text-primary: #1f2937;
-    text-secondary: #374151;
-    text-muted: #6b7280;
-    primary-color: #6366f1; /* Indigo élégant */
-    primary-hover: #4f46e5;
-    primary-pressed: #4338ca;
+    /* Définition des couleurs du thème clair chaud (Beige Premium) */
+    bg-primary: #f4f1ea;     /* Fond beige chaud et reposant */
+    bg-card: #ffffff;        /* Cartes blanches pour le relief */
+    bg-input: #eeeae0;       /* Entrées beige-gris clair */
+    bg-input-focus: #e2dcd0; /* Focus entrées */
+    border-color: #e0dcd3;   /* Bordures beige-gris douces */
+    border-input: #ccc6b8;   /* Bordures entrées */
+    text-primary: #2d2922;   /* Texte anthracite chaud (moka foncé) */
+    text-secondary: #423c34; /* Texte secondaire chaud */
+    text-muted: #857d72;     /* Texte en retrait chaud */
+    primary-color: #5254e3;  /* Indigo cobalt royal pour un contraste chic */
+    primary-hover: #3f41cf;
+    primary-pressed: #2c2db5;
     bg-header: #ffffff;
-    border-header: #d8dbe0;
-    bg-table-odd: #f9fafb;
-    bg-table-selected: #e0e7ff;
+    border-header: #e0dcd3;
+    bg-table-odd: #faf9f6;   /* Lignes impaires crème très clair */
+    bg-table-selected: #e3e0ff; /* Sélection teintée indigo */
     bg-table-viewport: #ffffff;
-    scroll-thumb: #cbd5e1;
-    scroll-thumb-hover: #94a3b8;
+    scroll-thumb: #dcd6ca;
+    scroll-thumb-hover: #beb6a7;
 }
 
 /* Titres et labels */
