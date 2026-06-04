@@ -125,16 +125,27 @@ function addStream(tabId, url) {
       }
     }
     
-    detectedStreams[tabId].push({ url, quality });
-    
-    // Mettre à jour le badge de l'icône de l'extension (nombre de flux)
-    chrome.action.setBadgeText({
-      tabId: tabId,
-      text: detectedStreams[tabId].length.toString()
-    });
-    chrome.action.setBadgeBackgroundColor({
-      tabId: tabId,
-      color: "#7c4dff" // Couleur d'accent violet
+    // Récupérer le titre de l'onglet de manière asynchrone
+    chrome.tabs.get(tabId, (tab) => {
+      let title = "";
+      if (!chrome.runtime.lastError && tab && tab.title) {
+        title = tab.title;
+      }
+      
+      // S'assurer qu'un autre écouteur n'a pas ajouté le flux entre temps
+      if (!detectedStreams[tabId].some(s => s.url === url)) {
+        detectedStreams[tabId].push({ url, quality, title });
+        
+        // Mettre à jour le badge de l'icône de l'extension (nombre de flux)
+        chrome.action.setBadgeText({
+          tabId: tabId,
+          text: detectedStreams[tabId].length.toString()
+        });
+        chrome.action.setBadgeBackgroundColor({
+          tabId: tabId,
+          color: "#7c4dff" // Couleur d'accent violet
+        });
+      }
     });
   }
 }
