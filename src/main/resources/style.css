@@ -28,26 +28,26 @@
 }
 
 .root.light-theme {
-    /* Définition des couleurs du thème clair chaud (Beige Premium) */
-    bg-primary: #f4f1ea;     /* Fond beige chaud et reposant */
-    bg-card: #ffffff;        /* Cartes blanches pour le relief */
-    bg-input: #eeeae0;       /* Entrées beige-gris clair */
-    bg-input-focus: #e2dcd0; /* Focus entrées */
-    border-color: #e0dcd3;   /* Bordures beige-gris douces */
-    border-input: #ccc6b8;   /* Bordures entrées */
-    text-primary: #2d2922;   /* Texte anthracite chaud (moka foncé) */
-    text-secondary: #423c34; /* Texte secondaire chaud */
-    text-muted: #857d72;     /* Texte en retrait chaud */
-    primary-color: #5254e3;  /* Indigo cobalt royal pour un contraste chic */
-    primary-hover: #3f41cf;
-    primary-pressed: #2c2db5;
+    /* Définition des couleurs du thème clair moderne (Alabaster & Slate) */
+    bg-primary: #f5f5f7;     /* Gris Apple très clair et moderne */
+    bg-card: #ffffff;        /* Cartes blanches épurées */
+    bg-input: #fbfbfd;       /* Fond d'inputs très blanc-gris */
+    bg-input-focus: #f5f5f7;
+    border-color: #e5e5e7;   /* Bordures fines et discrètes */
+    border-input: #d2d2d7;   /* Bordures inputs */
+    text-primary: #1d1d1f;   /* Texte noir anthracite contemporain */
+    text-secondary: #515154; /* Texte secondaire gris foncé */
+    text-muted: #86868b;     /* Texte atténué */
+    primary-color: #7c4dff;  /* Violet électrique pour une touche de modernité dynamique */
+    primary-hover: #9e7dff;
+    primary-pressed: #5c35c2;
     bg-header: #ffffff;
-    border-header: #e0dcd3;
-    bg-table-odd: #faf9f6;   /* Lignes impaires crème très clair */
-    bg-table-selected: #e3e0ff; /* Sélection teintée indigo */
+    border-header: #e5e5e7;
+    bg-table-odd: #fbfbfd;   /* Lignes impaires très blanches */
+    bg-table-selected: #f0ebff; /* Sélection violette translucide */
     bg-table-viewport: #ffffff;
-    scroll-thumb: #dcd6ca;
-    scroll-thumb-hover: #beb6a7;
+    scroll-thumb: #d2d2d7;
+    scroll-thumb-hover: #a1a1a6;
 }
 
 /* Titres et labels */
