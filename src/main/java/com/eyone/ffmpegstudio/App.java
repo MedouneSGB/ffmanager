@@ -82,9 +82,11 @@ public class App extends Application {
     // Référence du lecteur de streaming
     private MediaPlayer mediaPlayer;
     private HttpServer localServer;
+    private Stage primaryStage;
 
     @Override
     public void start(Stage stage) {
+        this.primaryStage = stage;
         // Chargement des chemins FFmpeg
         initFFmpegPaths();
         
@@ -1347,11 +1349,15 @@ public class App extends Application {
                                 .lines().collect(Collectors.joining("\n"));
                         
                         String url = extractUrlFromJson(body);
+                        boolean play = extractPlayFromJson(body);
                         
                         if (url != null && !url.isEmpty()) {
                             Platform.runLater(() -> {
                                 urlSourceRadio.setSelected(true);
                                 urlField.setText(url);
+                                if (play) {
+                                    playActiveStream(primaryStage);
+                                }
                             });
                             
                             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
@@ -1391,6 +1397,13 @@ public class App extends Application {
             return matcher.group(1).replace("\\/", "/");
         }
         return null;
+    }
+
+    private boolean extractPlayFromJson(String json) {
+        if (json == null) return false;
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"play\"\\s*:\\s*true");
+        java.util.regex.Matcher matcher = pattern.matcher(json);
+        return matcher.find();
     }
 
     public static void main(String[] args) {

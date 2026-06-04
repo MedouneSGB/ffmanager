@@ -22,10 +22,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const btn = document.createElement("button");
         btn.className = "btn";
         btn.textContent = "Envoyer";
-        btn.addEventListener("click", () => sendToApp(stream.url));
+        btn.addEventListener("click", () => sendToApp(stream.url, false));
+        
+        const btnPlay = document.createElement("button");
+        btnPlay.className = "btn btn-play";
+        btnPlay.textContent = "Lire";
+        btnPlay.addEventListener("click", () => sendToApp(stream.url, true));
+        
+        const btnGroup = document.createElement("div");
+        btnGroup.style.display = "flex";
+        btnGroup.style.gap = "6px";
+        btnGroup.appendChild(btn);
+        btnGroup.appendChild(btnPlay);
         
         header.appendChild(badge);
-        header.appendChild(btn);
+        header.appendChild(btnGroup);
         
         const urlDiv = document.createElement("div");
         urlDiv.className = "stream-url";
@@ -40,18 +51,19 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Envoyer l'URL du flux à l'application Java via le serveur HTTP local
-  function sendToApp(url) {
+  function sendToApp(url, play) {
     fetch("http://localhost:8555/add-stream", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ url: url })
+      body: JSON.stringify({ url: url, play: play })
     })
     .then(response => response.json())
     .then(data => {
       if (data.status === "ok") {
-        showStatus("✓ Envoyé avec succès à FFmpeg Studio !", "#00e676", "rgba(0, 230, 118, 0.1)");
+        const actionMsg = play ? "Lancé" : "Envoyé";
+        showStatus("✓ " + actionMsg + " avec succès dans FFmpeg Studio !", "#00e676", "rgba(0, 230, 118, 0.1)");
       } else {
         showStatus("⚠ Erreur de réponse de l'application.", "#ff1744", "rgba(255, 23, 68, 0.1)");
       }
