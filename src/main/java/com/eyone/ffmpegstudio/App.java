@@ -1326,28 +1326,24 @@ public class App extends Application {
                     if (job != null) {
                         Job.Status status = job.getStatus();
                         if (status == Job.Status.EN_ATTENTE || status == Job.Status.EN_COURS) {
-                            cancelBtn.setVisible(true);
-                            cancelBtn.setManaged(true);
                             cancelBtn.setText("Annuler");
-                            fileBtn.setVisible(false);
-                            fileBtn.setManaged(false);
-                            playBtn.setVisible(false);
-                            playBtn.setManaged(false);
+                            fileBtn.setDisable(true);
+                            playBtn.setDisable(true);
+                            // Apparence désactivée pour playBtn
+                            playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
                         } else {
-                            cancelBtn.setVisible(true);
-                            cancelBtn.setManaged(true);
                             cancelBtn.setText("Supprimer");
                             
                             if (status == Job.Status.TERMINE && job.getOutput() != null && job.getOutput().exists()) {
-                                fileBtn.setVisible(true);
-                                fileBtn.setManaged(true);
-                                playBtn.setVisible(true);
-                                playBtn.setManaged(true);
+                                fileBtn.setDisable(false);
+                                playBtn.setDisable(false);
+                                // Rétablir la couleur verte de lecture active
+                                playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214; -fx-font-weight: bold;");
                             } else {
-                                fileBtn.setVisible(false);
-                                fileBtn.setManaged(false);
-                                playBtn.setVisible(false);
-                                playBtn.setManaged(false);
+                                fileBtn.setDisable(true);
+                                playBtn.setDisable(true);
+                                // Désactivé si échec ou fichier absent
+                                playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
                             }
                         }
                     }
