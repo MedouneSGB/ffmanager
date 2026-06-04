@@ -1272,6 +1272,12 @@ public class App extends Application {
             private final Button fileBtn = new Button("Fichier");
             private final Button playBtn = new Button("Lire");
             private final HBox container = new HBox(6, cancelBtn, fileBtn, playBtn);
+            
+            private final javafx.beans.value.ChangeListener<Job.Status> statusListener = (obs, oldStatus, newStatus) -> {
+                updateButtons(newStatus);
+            };
+            private Job currentJob = null;
+
             {
                 container.setAlignment(Pos.CENTER);
                 cancelBtn.getStyleClass().add("btn-danger");
@@ -1281,23 +1287,21 @@ public class App extends Application {
                 // Style des boutons pour tenir dans le tableau
                 cancelBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
                 fileBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
-                playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214;");
+                playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
                 
                 cancelBtn.setOnAction(e -> {
-                    Job job = getTableView().getItems().get(getIndex());
-                    if (job != null) {
-                        if (job.getStatus() == Job.Status.EN_ATTENTE || job.getStatus() == Job.Status.EN_COURS) {
-                            queue.cancel(job);
+                    if (currentJob != null) {
+                        if (currentJob.getStatus() == Job.Status.EN_ATTENTE || currentJob.getStatus() == Job.Status.EN_COURS) {
+                            queue.cancel(currentJob);
                         } else {
-                            queue.getJobs().remove(job);
+                            queue.getJobs().remove(currentJob);
                         }
                     }
                 });
                 
                 fileBtn.setOnAction(e -> {
-                    Job job = getTableView().getItems().get(getIndex());
-                    if (job != null && job.getOutput() != null) {
-                        File outFile = job.getOutput();
+                    if (currentJob != null && currentJob.getOutput() != null) {
+                        File outFile = currentJob.getOutput();
                         try {
                             if (System.getProperty("os.name").toLowerCase().contains("win")) {
                                 new ProcessBuilder("explorer.exe", "/select,", outFile.getAbsolutePath()).start();
@@ -1311,41 +1315,51 @@ public class App extends Application {
                 });
                 
                 playBtn.setOnAction(e -> {
-                    Job job = getTableView().getItems().get(getIndex());
-                    if (job != null && job.getOutput() != null) {
-                        playMedia(job.getOutput().getAbsolutePath(), primaryStage);
+                    if (currentJob != null && currentJob.getOutput() != null) {
+                        playMedia(currentJob.getOutput().getAbsolutePath(), primaryStage);
                     }
                 });
             }
+
+            private void updateButtons(Job.Status status) {
+                if (currentJob == null) return;
+                
+                if (status == Job.Status.EN_ATTENTE || status == Job.Status.EN_COURS) {
+                    cancelBtn.setText("Annuler");
+                    fileBtn.setDisable(true);
+                    playBtn.setDisable(true);
+                    playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
+                } else {
+                    cancelBtn.setText("Supprimer");
+                    
+                    if (status == Job.Status.TERMINE && currentJob.getOutput() != null && currentJob.getOutput().exists()) {
+                        fileBtn.setDisable(false);
+                        playBtn.setDisable(false);
+                        playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214; -fx-font-weight: bold;");
+                    } else {
+                        fileBtn.setDisable(true);
+                        playBtn.setDisable(true);
+                        playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
+                    }
+                }
+            }
+
             @Override protected void updateItem(Void v, boolean empty) {
                 super.updateItem(v, empty);
+                
+                // Se détacher du job précédent pour éviter les fuites de mémoire
+                if (currentJob != null) {
+                    currentJob.statusProperty().removeListener(statusListener);
+                }
+                
                 if (empty) {
+                    currentJob = null;
                     setGraphic(null);
                 } else {
-                    Job job = getTableView().getItems().get(getIndex());
-                    if (job != null) {
-                        Job.Status status = job.getStatus();
-                        if (status == Job.Status.EN_ATTENTE || status == Job.Status.EN_COURS) {
-                            cancelBtn.setText("Annuler");
-                            fileBtn.setDisable(true);
-                            playBtn.setDisable(true);
-                            // Apparence désactivée pour playBtn
-                            playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
-                        } else {
-                            cancelBtn.setText("Supprimer");
-                            
-                            if (status == Job.Status.TERMINE && job.getOutput() != null && job.getOutput().exists()) {
-                                fileBtn.setDisable(false);
-                                playBtn.setDisable(false);
-                                // Rétablir la couleur verte de lecture active
-                                playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214; -fx-font-weight: bold;");
-                            } else {
-                                fileBtn.setDisable(true);
-                                playBtn.setDisable(true);
-                                // Désactivé si échec ou fichier absent
-                                playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
-                            }
-                        }
+                    currentJob = getTableView().getItems().get(getIndex());
+                    if (currentJob != null) {
+                        currentJob.statusProperty().addListener(statusListener);
+                        updateButtons(currentJob.getStatus());
                     }
                     setGraphic(container);
                 }
