@@ -49,7 +49,12 @@ public class FFmpegRunner {
             pb.redirectErrorStream(true);
             Process p = pb.start();
             p.getOutputStream().close();
-            p.getInputStream().close();
+            try (java.io.InputStream is = p.getInputStream()) {
+                byte[] buf = new byte[1024];
+                while (is.read(buf) != -1) {
+                    // drain output to avoid SIGPIPE on Mac/Linux
+                }
+            }
             int exitCode = p.waitFor();
             if (exitCode != 0) {
                 System.err.println("[WARN] FFmpegRunner check: '" + path + "' a retourné le code de sortie " + exitCode);
@@ -133,10 +138,15 @@ public class FFmpegRunner {
                 inputPath);
         pb.redirectErrorStream(true);
         Process p = pb.start();
-        String out;
+        String out = null;
         try (BufferedReader r = new BufferedReader(
                 new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-            out = r.readLine();
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (out == null) {
+                    out = line.trim();
+                }
+            }
         }
         p.waitFor();
         try {

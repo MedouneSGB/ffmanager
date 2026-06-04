@@ -499,7 +499,12 @@ public class App extends Application {
             pb.redirectErrorStream(true);
             Process p = pb.start();
             p.getOutputStream().close();
-            p.getInputStream().close();
+            try (java.io.InputStream is = p.getInputStream()) {
+                byte[] buf = new byte[1024];
+                while (is.read(buf) != -1) {
+                    // drain output to avoid SIGPIPE on Mac/Linux
+                }
+            }
             int exitCode = p.waitFor();
             if (exitCode != 0) {
                 System.err.println("[WARN] L'exécutable '" + cleanPath + "' a retourné le code de sortie " + exitCode);
