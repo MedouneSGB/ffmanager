@@ -49,6 +49,7 @@ import java.util.stream.Collectors;
 public class App extends Application {
 
     private final Preferences prefs = Preferences.userNodeForPackage(App.class);
+    private java.awt.TrayIcon trayIcon;
     private String ffmpegPath;
     private String ffprobePath;
 
@@ -389,9 +390,7 @@ public class App extends Application {
             System.err.println("Impossible de charger l'icône : " + e.getMessage());
         }
         
-        stage.setOnCloseRequest(e -> {
-            Platform.exit();
-        });
+        setupSystemTray(stage);
         
         stage.show();
         updatePreview();
@@ -1540,6 +1539,78 @@ public class App extends Application {
         return null;
     }
 
+    private void setupSystemTray(Stage stage) {
+        // Désactiver la fermeture automatique de JavaFX lorsque toutes les fenêtres sont masquées
+        Platform.setImplicitExit(false);
+
+        if (!java.awt.SystemTray.isSupported()) {
+            System.out.println("SystemTray n'est pas supporté sur ce système.");
+            stage.setOnCloseRequest(e -> Platform.exit());
+            return;
+        }
+
+        // Pour éviter le blocage de l'AWT thread
+        java.awt.Toolkit.getDefaultToolkit();
+
+        try {
+            java.awt.SystemTray tray = java.awt.SystemTray.getSystemTray();
+            
+            // Chargement de l'icône AWT
+            java.awt.Image image = javax.imageio.ImageIO.read(getClass().getResourceAsStream("/icon.png"));
+            
+            java.awt.PopupMenu popup = new java.awt.PopupMenu();
+            
+            java.awt.MenuItem openItem = new java.awt.MenuItem("Ouvrir FFmpeg Studio");
+            openItem.addActionListener(e -> Platform.runLater(() -> {
+                stage.show();
+                stage.toFront();
+                stage.setIconified(false);
+            }));
+            popup.add(openItem);
+            
+            java.awt.MenuItem exitItem = new java.awt.MenuItem("Quitter");
+            exitItem.addActionListener(e -> Platform.runLater(() -> {
+                try {
+                    tray.remove(trayIcon);
+                } catch (Exception ex) {}
+                Platform.exit();
+            }));
+            popup.add(exitItem);
+            
+            trayIcon = new java.awt.TrayIcon(image, "FFmpeg Studio", popup);
+            trayIcon.setImageAutoSize(true);
+            
+            // Action au double-clic sur l'icône
+            trayIcon.addActionListener(e -> Platform.runLater(() -> {
+                stage.show();
+                stage.toFront();
+                stage.setIconified(false);
+            }));
+            
+            tray.add(trayIcon);
+            
+            // Intercepter la fermeture de la fenêtre principale
+            stage.setOnCloseRequest(e -> {
+                e.consume(); // Empêche la fermeture réelle de l'application
+                stage.hide(); // Masque simplement la fenêtre
+                
+                // Afficher une notification ballon au premier masquage
+                if (prefs.getBoolean("showTrayInfo", true)) {
+                    trayIcon.displayMessage(
+                        "FFmpeg Studio",
+                        "L'application continue de fonctionner en arrière-plan dans la barre des tâches.",
+                        java.awt.TrayIcon.MessageType.INFO
+                    );
+                    prefs.putBoolean("showTrayInfo", false); // Afficher une seule fois par session
+                }
+            });
+            
+        } catch (Exception ex) {
+            System.err.println("Impossible d'initialiser le SystemTray : " + ex.getMessage());
+            stage.setOnCloseRequest(e -> Platform.exit());
+        }
+    }
+
     private boolean extractPlayFromJson(String json) {
         if (json == null) return false;
         return json.contains("\"play\":true") || json.contains("\"play\": true");
@@ -1549,6 +1620,13 @@ public class App extends Application {
     public void stop() throws Exception {
         super.stop();
         System.out.println("Arrêt en cours de l'application...");
+        if (trayIcon != null) {
+            try {
+                java.awt.SystemTray.getSystemTray().remove(trayIcon);
+            } catch (Exception ex) {
+                // Ignore
+            }
+        }
         if (queue != null) {
             queue.shutdown();
         }
