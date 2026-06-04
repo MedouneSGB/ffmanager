@@ -1902,22 +1902,33 @@ public class App extends Application {
                             if (!fileName.contains("..")) {
                                 File file = new File(tempHlsDir, fileName);
                                 if (file.exists() && file.isFile()) {
-                                    byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
-                                    
-                                    String contentType = "application/octet-stream";
-                                    if (fileName.endsWith(".m3u8")) {
-                                        contentType = "application/vnd.apple.mpegurl";
-                                    } else if (fileName.endsWith(".ts")) {
-                                        contentType = "video/MP2T";
+                                    try {
+                                        byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
+                                        
+                                        String contentType = "application/octet-stream";
+                                        if (fileName.endsWith(".m3u8")) {
+                                            contentType = "application/vnd.apple.mpegurl";
+                                        } else if (fileName.endsWith(".ts")) {
+                                            contentType = "video/MP2T";
+                                        }
+                                        
+                                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                                        exchange.getResponseHeaders().add("Content-Type", contentType);
+                                        exchange.sendResponseHeaders(200, fileBytes.length);
+                                        try (OutputStream os = exchange.getResponseBody()) {
+                                            os.write(fileBytes);
+                                        }
+                                        System.out.println("[HLS Server] 200 OK : " + fileName + " (" + fileBytes.length + " octets)");
+                                        return;
+                                    } catch (Exception ex) {
+                                        System.err.println("[HLS Server] [ERROR] Impossible de servir " + fileName + " : " + ex.getMessage());
+                                        ex.printStackTrace(System.err);
+                                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                                        exchange.sendResponseHeaders(500, -1);
+                                        return;
                                     }
-                                    
-                                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-                                    exchange.getResponseHeaders().add("Content-Type", contentType);
-                                    exchange.sendResponseHeaders(200, fileBytes.length);
-                                    OutputStream os = exchange.getResponseBody();
-                                    os.write(fileBytes);
-                                    os.close();
-                                    return;
+                                } else {
+                                    System.out.println("[HLS Server] 404 Introuvable : " + fileName);
                                 }
                             }
                         }
