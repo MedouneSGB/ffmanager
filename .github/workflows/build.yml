@@ -1,0 +1,73 @@
+name: Build JavaFX Application (JAR & EXE)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: Build with Maven (Shaded JAR)
+      run: mvn clean package
+
+    - name: Create Portable App Image (Directory)
+      run: |
+        jpackage --input target/ `
+                 --dest target/dist-portable/ `
+                 --name "FFmpegStudio" `
+                 --main-jar ffmpeg-studio-0.1.0.jar `
+                 --main-class com.eyone.ffmpegstudio.Launcher `
+                 --type app-image `
+                 --icon src/main/resources/icon.ico
+
+    - name: Create Zip of Portable App
+      shell: pwsh
+      run: |
+        Compress-Archive -Path target/dist-portable/FFmpegStudio -DestinationPath target/FFmpegStudio-Portable-Windows.zip
+
+    - name: Build Standalone EXE Installer
+      run: |
+        jpackage --input target/ `
+                 --dest target/dist-installer/ `
+                 --name "FFmpegStudio" `
+                 --main-jar ffmpeg-studio-0.1.0.jar `
+                 --main-class com.eyone.ffmpegstudio.Launcher `
+                 --type exe `
+                 --win-menu `
+                 --win-shortcut `
+                 --vendor "FFmpeg Studio" `
+                 --app-version "0.1.0" `
+                 --icon src/main/resources/icon.ico
+
+    - name: Upload Shaded JAR Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-studio-jar
+        path: target/ffmpeg-studio-0.1.0.jar
+
+    - name: Upload Portable Windows ZIP Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-studio-portable-windows
+        path: target/FFmpegStudio-Portable-Windows.zip
+
+    - name: Upload EXE Installer Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-studio-installer-windows
+        path: target/dist-installer/*.exe
