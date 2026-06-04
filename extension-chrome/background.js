@@ -85,6 +85,13 @@ function updateStreamQuality(tabId, url, quality) {
         url: stream.url,
         quality: quality
       }).catch(() => {});
+      
+      // Notifier le content script de l'onglet
+      chrome.tabs.sendMessage(tabId, {
+        action: "streamUpdated",
+        url: stream.url,
+        quality: quality
+      }).catch(() => {});
     }
   }
 }
@@ -145,6 +152,12 @@ function addStream(tabId, url) {
           tabId: tabId,
           color: "#7c4dff" // Couleur d'accent violet
         });
+        
+        // Notifier le content script de l'onglet
+        chrome.tabs.sendMessage(tabId, {
+          action: "streamsDetected",
+          streams: detectedStreams[tabId]
+        }).catch(() => {});
       }
     });
   }
@@ -184,13 +197,34 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // Communication avec la popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "getStreams") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs.length > 0) {
-        const activeTabId = tabs[0].id;
-        sendResponse({ streams: detectedStreams[activeTabId] || [] });
-      } else {
-        sendResponse({ streams: [] });
-      }
+    const tabId = (sender && sender.tab) ? sender.tab.id : null;
+    if (tabId !== null) {
+      sendResponse({ streams: detectedStreams[tabId] || [] });
+    } else {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs.length > 0) {
+          const activeTabId = tabs[0].id;
+          sendResponse({ streams: detectedStreams[activeTabId] || [] });
+        } else {
+          sendResponse({ streams: [] });
+        }
+      });
+      return true; // Garder la communication ouverte pour la réponse asynchrone
+    }
+  } else if (message.action === "sendToApp") {
+    fetch("http://localhost:8555/add-stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ url: message.url, title: message.title, play: message.play })
+    })
+    .then(response => response.json())
+    .then(data => {
+      sendResponse(data);
+    })
+    .catch(error => {
+      sendResponse({ status: "error", error: error.message });
     });
     return true; // Garder la communication ouverte pour la réponse asynchrone
   }
