@@ -46,7 +46,7 @@ function injectStyles() {
     .ffmpeg-dropdown-menu {
       display: none !important;
       position: absolute !important;
-      top: calc(100% + 6px) !important;
+      top: 100% !important;
       right: 0 !important;
       background-color: #161622 !important;
       border: 1px solid #2e2e3e !important;
