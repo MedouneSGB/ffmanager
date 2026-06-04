@@ -984,9 +984,35 @@ public class App extends Application {
 
         // Si l'utilisateur a déjà collé un lien de flux direct, pas besoin d'analyse
         if (inputUrl.endsWith(".m3u8") || inputUrl.endsWith(".mp4") || inputUrl.endsWith(".mpd") || inputUrl.endsWith(".webm") || inputUrl.contains(".m3u8?")) {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Cette URL semble déjà être un lien de flux direct.");
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Flux Direct Détecté");
+            alert.setHeaderText("Cette URL est déjà un flux direct !");
             styleDialog(alert, parentStage);
-            alert.showAndWait();
+            alert.getDialogPane().setPrefWidth(550);
+            
+            VBox content = new VBox(12);
+            content.setPadding(new Insets(10, 0, 10, 0));
+            
+            Label infoLabel = new Label("Cette URL est déjà un lien direct de vidéo. Vous pouvez la lancer immédiatement :");
+            infoLabel.setWrapText(true);
+            
+            TextField urlDisplay = new TextField(inputUrl);
+            urlDisplay.setEditable(false);
+            urlDisplay.getStyleClass().add("text-input");
+            urlDisplay.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 11px;");
+            HBox.setHgrow(urlDisplay, Priority.ALWAYS);
+            
+            content.getChildren().addAll(infoLabel, urlDisplay);
+            alert.getDialogPane().setContent(content);
+            
+            ButtonType lancerBtnType = new ButtonType("Lancer", ButtonBar.ButtonData.OK_DONE);
+            alert.getDialogPane().getButtonTypes().add(0, lancerBtnType);
+            
+            alert.showAndWait().ifPresent(response -> {
+                if (response == lancerBtnType) {
+                    Platform.runLater(() -> playActiveStream(parentStage));
+                }
+            });
             return;
         }
 
