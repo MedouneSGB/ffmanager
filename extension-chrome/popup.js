@@ -22,12 +22,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const btn = document.createElement("button");
         btn.className = "btn";
         btn.textContent = "Envoyer";
-        btn.addEventListener("click", () => sendToApp(stream.url, false));
+        btn.addEventListener("click", () => sendToApp(stream.url, stream.title || "", false));
         
         const btnPlay = document.createElement("button");
         btnPlay.className = "btn btn-play";
         btnPlay.textContent = "Lire";
-        btnPlay.addEventListener("click", () => sendToApp(stream.url, true));
+        btnPlay.addEventListener("click", () => sendToApp(stream.url, stream.title || "", true));
         
         const btnGroup = document.createElement("div");
         btnGroup.style.display = "flex";
@@ -67,13 +67,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Envoyer l'URL du flux à l'application Java via le serveur HTTP local
-  function sendToApp(url, play) {
+  function sendToApp(url, title, play) {
     fetch("http://localhost:8555/add-stream", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ url: url, play: play })
+      body: JSON.stringify({ url: url, title: title, play: play })
     })
     .then(response => response.json())
     .then(data => {

@@ -56,6 +56,7 @@ public class App extends Application {
     private FFmpegRunner runner;
     private File selectedFile;
     private File customOutputFile;
+    private String suggestedTitleFromExtension = null;
 
     // Éléments UI Source
     private final RadioButton fileSourceRadio = new RadioButton("Fichier local");
@@ -179,7 +180,11 @@ public class App extends Application {
 
         // Zone URL de Flux
         urlField.setPromptText("Saisir l'URL du flux (m3u8) ou d'une page Web à analyser...");
-        urlField.textProperty().addListener((o, a, b) -> updatePreview());
+        urlField.textProperty().addListener((o, a, b) -> {
+            suggestedTitleFromExtension = null;
+            updateCustomOutputLabel(presetBox.getValue());
+            updatePreview();
+        });
         
         detectBtn.getStyleClass().add("btn-secondary");
         detectBtn.setOnAction(e -> handleStreamDetection(stage));
@@ -620,7 +625,11 @@ public class App extends Application {
             if (!downloads.exists()) {
                 downloads = new File(userHome);
             }
-            return new File(downloads, "flux_telecharge" + ext);
+            String baseName = "flux_telecharge";
+            if (suggestedTitleFromExtension != null && !suggestedTitleFromExtension.isEmpty()) {
+                baseName = suggestedTitleFromExtension;
+            }
+            return new File(downloads, baseName + ext);
         }
     }
 
@@ -1453,13 +1462,21 @@ public class App extends Application {
                         
                         System.out.println("[DEBUG HTTP Server] Body recu: " + body);
                         String url = extractUrlFromJson(body);
+                        String title = extractTitleFromJson(body);
                         boolean play = extractPlayFromJson(body);
-                        System.out.println("[DEBUG HTTP Server] URL extraite: " + url + " | play: " + play);
+                        System.out.println("[DEBUG HTTP Server] URL extraite: " + url + " | title: " + title + " | play: " + play);
                         
                         if (url != null && !url.isEmpty()) {
                             Platform.runLater(() -> {
                                 urlSourceRadio.setSelected(true);
-                                urlField.setText(url);
+                                urlField.setText(url); // Déclenche le listener et réinitialise
+                                
+                                if (title != null && !title.isEmpty()) {
+                                    suggestedTitleFromExtension = title;
+                                    customOutputFile = null;
+                                    updateCustomOutputLabel(presetBox.getValue());
+                                }
+                                
                                 if (play) {
                                     System.out.println("[DEBUG HTTP Server] Declenchement de playActiveStream...");
                                     playActiveStream(primaryStage);
@@ -1506,6 +1523,19 @@ public class App extends Application {
         java.util.regex.Matcher matcher = pattern.matcher(json);
         if (matcher.find()) {
             return matcher.group(1).replace("\\/", "/");
+        }
+        return null;
+    }
+
+    private String extractTitleFromJson(String json) {
+        if (json == null) return null;
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"title\"\\s*:\\s*\"([^\"]+)\"");
+        java.util.regex.Matcher matcher = pattern.matcher(json);
+        if (matcher.find()) {
+            String title = matcher.group(1);
+            // Nettoyage pour un nom de fichier Windows/OS valide
+            title = title.replaceAll("[\\\\/:*?\"<>|]", "_");
+            return title.trim();
         }
         return null;
     }
