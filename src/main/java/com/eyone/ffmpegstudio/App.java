@@ -468,33 +468,61 @@ public class App extends Application {
         }
     }
 
+    private String sanitizePath(String path) {
+        if (path == null) return "";
+        path = path.trim();
+        if (path.length() >= 2) {
+            if ((path.startsWith("\"") && path.endsWith("\"")) || 
+                (path.startsWith("'") && path.endsWith("'"))) {
+                path = path.substring(1, path.length() - 1);
+            }
+        }
+        return path.trim();
+    }
+
     private boolean checkBinaries(String ffmpeg, String ffprobe) {
         return checkExecutable(ffmpeg) && checkExecutable(ffprobe);
     }
 
     private boolean checkExecutable(String path) {
+        String cleanPath = sanitizePath(path);
+        if (cleanPath.isEmpty()) {
+            return false;
+        }
         try {
-            ProcessBuilder pb = new ProcessBuilder(path, "-version");
+            ProcessBuilder pb = new ProcessBuilder(cleanPath, "-version");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             p.getOutputStream().close();
             p.getInputStream().close();
             int exitCode = p.waitFor();
+            if (exitCode != 0) {
+                System.err.println("[WARN] L'exécutable '" + cleanPath + "' a retourné le code de sortie " + exitCode);
+            }
             return exitCode == 0;
         } catch (Exception e) {
+            System.err.println("[ERROR] Impossible de démarrer l'exécutable '" + cleanPath + "' : " + e.getMessage());
+            e.printStackTrace(System.err);
             return false;
         }
     }
 
     private void updateFFmpegStatusUI() {
-        boolean ok = checkBinaries(ffmpegPath, ffprobePath);
-        if (ok) {
+        boolean ffOk = checkExecutable(ffmpegPath);
+        boolean fpOk = checkExecutable(ffprobePath);
+        
+        ffmpegStatusLabel.getStyleClass().clear();
+        if (ffOk && fpOk) {
             ffmpegStatusLabel.setText("✓ FFmpeg & ffprobe détectés");
-            ffmpegStatusLabel.getStyleClass().clear();
             ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-ok");
+        } else if (!ffOk && !fpOk) {
+            ffmpegStatusLabel.setText("⚠ FFmpeg & ffprobe non trouvés");
+            ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
+        } else if (!ffOk) {
+            ffmpegStatusLabel.setText("⚠ FFmpeg non trouvé");
+            ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
         } else {
-            ffmpegStatusLabel.setText("⚠ FFmpeg ou ffprobe non trouvé");
-            ffmpegStatusLabel.getStyleClass().clear();
+            ffmpegStatusLabel.setText("⚠ ffprobe non trouvé");
             ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
         }
     }
@@ -519,6 +547,31 @@ public class App extends Application {
         browseFf.getStyleClass().add("btn-secondary");
         boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
         
+        TextField ffprobeField = new TextField(ffprobePath);
+        ffprobeField.setPrefWidth(300);
+        Button browseFp = new Button("Parcourir...");
+        browseFp.getStyleClass().add("btn-secondary");
+
+        ffmpegField.textProperty().addListener((obs, oldVal, newVal) -> {
+            String val = sanitizePath(newVal);
+            if (!val.isEmpty()) {
+                File ffmpegFile = new File(val);
+                if (ffmpegFile.isFile()) {
+                    File parent = ffmpegFile.getParentFile();
+                    if (parent != null) {
+                        String probeName = isWindows ? "ffprobe.exe" : "ffprobe";
+                        File ffprobeFile = new File(parent, probeName);
+                        if (ffprobeFile.exists()) {
+                            String currentFp = sanitizePath(ffprobeField.getText());
+                            if (currentFp.isEmpty() || currentFp.equals("ffprobe") || currentFp.equals("ffprobe.exe") || !new File(currentFp).exists()) {
+                                ffprobeField.setText(ffprobeFile.getAbsolutePath());
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
         browseFf.setOnAction(e -> {
             FileChooser fc = new FileChooser();
             fc.setTitle("Sélectionner ffmpeg" + (isWindows ? ".exe" : ""));
@@ -533,10 +586,6 @@ public class App extends Application {
             }
         });
 
-        TextField ffprobeField = new TextField(ffprobePath);
-        ffprobeField.setPrefWidth(300);
-        Button browseFp = new Button("Parcourir...");
-        browseFp.getStyleClass().add("btn-secondary");
         browseFp.setOnAction(e -> {
             FileChooser fc = new FileChooser();
             fc.setTitle("Sélectionner ffprobe" + (isWindows ? ".exe" : ""));
@@ -563,8 +612,8 @@ public class App extends Application {
 
         dialog.showAndWait().ifPresent(response -> {
             if (response == saveButtonType) {
-                String ff = ffmpegField.getText().trim();
-                String fp = ffprobeField.getText().trim();
+                String ff = sanitizePath(ffmpegField.getText());
+                String fp = sanitizePath(ffprobeField.getText());
                 
                 ffmpegPath = ff;
                 ffprobePath = fp;
@@ -1319,7 +1368,30 @@ public class App extends Application {
                 getSelectedVideoCodec(), getSelectedCrf(), getSelectedResolution(), getSelectedAudioBitrate(),
                 extraArgsField.getText()
         );
-        commandPreview.setText(String.join(" ", cmd));
+        commandPreview.setText(toShellCommand(cmd));
+    }
+
+    private String toShellCommand(List<String> cmd) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cmd.size(); i++) {
+            String arg = cmd.get(i);
+            if (i > 0) sb.append(" ");
+            
+            // Check if argument needs quoting (contains spaces, &, ?, *, |, $, etc.)
+            boolean needsQuotes = arg.contains(" ") || arg.contains("&") || arg.contains("?") || 
+                                  arg.contains("*") || arg.contains("|") || arg.contains("$") || 
+                                  arg.contains("<") || arg.contains(">") || arg.contains(";") ||
+                                  arg.contains("(") || arg.contains(")");
+            
+            if (needsQuotes) {
+                // Escape single quotes if any (standard Bourne shell escaping)
+                String escaped = arg.replace("'", "'\\''");
+                sb.append("'").append(escaped).append("'");
+            } else {
+                sb.append(arg);
+            }
+        }
+        return sb.toString();
     }
 
     private void addJob() {
