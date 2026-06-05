@@ -21,13 +21,13 @@ document.addEventListener("DOMContentLoaded", () => {
         
         const btn = document.createElement("button");
         btn.className = "btn";
-        btn.textContent = "Envoyer";
-        btn.addEventListener("click", () => sendToApp(stream.url, stream.title || "", false));
+        btn.textContent = "Télécharger";
+        btn.addEventListener("click", () => showDownloadPanel(stream.url, stream.title || ""));
         
         const btnPlay = document.createElement("button");
         btnPlay.className = "btn btn-play";
         btnPlay.textContent = "Lire";
-        btnPlay.addEventListener("click", () => sendToApp(stream.url, stream.title || "", true));
+        btnPlay.addEventListener("click", () => sendPlayToApp(stream.url, stream.title || ""));
         
         const btnGroup = document.createElement("div");
         btnGroup.style.display = "flex";
@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Écouter les mises à jour de flux en temps réel (ex: résolution résolue asynchronement)
+  // Écouter les mises à jour de flux en temps réel
   chrome.runtime.onMessage.addListener((message) => {
     if (message.action === "streamUpdated") {
       const items = streamList.querySelectorAll(".stream-item");
@@ -66,20 +66,131 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Envoyer l'URL du flux à l'application Java via le serveur HTTP local
-  function sendToApp(url, title, play) {
+  // Gérer l'affichage du panel de téléchargement IDM
+  function showDownloadPanel(url, title) {
+    streamList.style.display = "none";
+    document.getElementById("downloadPanel").style.display = "block";
+    
+    document.getElementById("panelUrl").value = url;
+    document.getElementById("panelFileName").value = "Chargement...";
+    document.getElementById("panelDestFolder").value = "Chargement...";
+    document.getElementById("panelFormat").value = "mp4";
+    
+    // Récupérer le chemin de destination par défaut depuis le serveur Java
+    const cleanTitle = encodeURIComponent(title || "flux_telecharge");
+    fetch(`http://localhost:8555/get-default-path?title=${cleanTitle}&preset=mp4`)
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById("panelFileName").value = data.fileName;
+        document.getElementById("panelDestFolder").value = data.defaultFolder;
+      })
+      .catch(error => {
+        // Fallback si l'application locale n'est pas ouverte
+        const safeTitle = (title || "flux_telecharge").replace(/[\\/:*?"<>|]/g, "_").trim();
+        document.getElementById("panelFileName").value = safeTitle + ".mp4";
+        document.getElementById("panelDestFolder").value = "C:\\Users\\...\\Downloads";
+        showStatus("⚠ Lancez FFmpeg Studio pour charger le dossier par défaut.", "#ff9800", "rgba(255, 152, 0, 0.1)");
+      });
+  }
+
+  function hideDownloadPanel() {
+    document.getElementById("downloadPanel").style.display = "none";
+    streamList.style.display = "block";
+  }
+
+  // Fermer le panel
+  document.getElementById("closePanelBtn").addEventListener("click", hideDownloadPanel);
+  document.getElementById("cancelDownloadBtn").addEventListener("click", hideDownloadPanel);
+
+  // Mettre à jour l'extension du fichier en fonction du format sélectionné
+  document.getElementById("panelFormat").addEventListener("change", (e) => {
+    const format = e.target.value;
+    const fileNameInput = document.getElementById("panelFileName");
+    let currentName = fileNameInput.value;
+    
+    if (format === "mp3") {
+      if (currentName.endsWith(".mp4")) {
+        fileNameInput.value = currentName.substring(0, currentName.length - 4) + ".mp3";
+      } else if (!currentName.endsWith(".mp3")) {
+        fileNameInput.value = currentName + ".mp3";
+      }
+    } else { // mp4
+      if (currentName.endsWith(".mp3")) {
+        fileNameInput.value = currentName.substring(0, currentName.length - 4) + ".mp4";
+      } else if (!currentName.endsWith(".mp4")) {
+        fileNameInput.value = currentName + ".mp4";
+      }
+    }
+  });
+
+  // Confirmer le téléchargement
+  document.getElementById("startDownloadBtn").addEventListener("click", () => {
+    const url = document.getElementById("panelUrl").value;
+    const fileName = document.getElementById("panelFileName").value.trim();
+    const destFolder = document.getElementById("panelDestFolder").value.trim();
+    
+    if (!fileName || fileName === "Chargement...") {
+      alert("Veuillez saisir un nom de fichier valide.");
+      return;
+    }
+    if (!destFolder || destFolder === "Chargement...") {
+      alert("Veuillez saisir un dossier de destination valide.");
+      return;
+    }
+
+    // Reconstruction du chemin complet
+    let sep = "\\";
+    if (destFolder.includes("/")) {
+      sep = "/";
+    }
+    const outputPath = destFolder + (destFolder.endsWith(sep) ? "" : sep) + fileName;
+
+    // Nom sans extension pour le titre du Job
+    let title = fileName;
+    if (title.endsWith(".mp4") || title.endsWith(".mp3")) {
+      title = title.substring(0, title.length - 4);
+    }
+
     fetch("http://localhost:8555/add-stream", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ url: url, title: title, play: play })
+      body: JSON.stringify({
+        url: url,
+        title: title,
+        play: false,
+        download: true,
+        outputPath: outputPath
+      })
     })
     .then(response => response.json())
     .then(data => {
       if (data.status === "ok") {
-        const actionMsg = play ? "Lancé" : "Envoyé";
-        showStatus("✓ " + actionMsg + " avec succès dans FFmpeg Studio !", "#00e676", "rgba(0, 230, 118, 0.1)");
+        showStatus("✓ Téléchargement démarré dans FFmpeg Studio !", "#00e676", "rgba(0, 230, 118, 0.1)");
+        hideDownloadPanel();
+      } else {
+        showStatus("⚠ Erreur de réponse de l'application.", "#ff1744", "rgba(255, 23, 68, 0.1)");
+      }
+    })
+    .catch(error => {
+      showStatus("⚠ Assurez-vous que FFmpeg Studio est ouvert.", "#ff1744", "rgba(255, 23, 68, 0.1)");
+    });
+  });
+
+  // Envoyer l'URL du flux à l'application Java pour la lecture directe
+  function sendPlayToApp(url, title) {
+    fetch("http://localhost:8555/add-stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ url: url, title: title, play: true })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === "ok") {
+        showStatus("✓ Lecture lancée avec succès !", "#00e676", "rgba(0, 230, 118, 0.1)");
       } else {
         showStatus("⚠ Erreur de réponse de l'application.", "#ff1744", "rgba(255, 23, 68, 0.1)");
       }

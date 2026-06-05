@@ -131,6 +131,42 @@
   <div class="stream-list" id="streamList">
     <div class="empty-state">Aucun flux détecté sur cette page.<br>Lancez une vidéo pour capturer le lien.</div>
   </div>
+
+  <!-- Panel de Téléchargement style IDM -->
+  <div id="downloadPanel" style="display: none; background-color: #1a1a24; border: 1px solid #7c4dff; border-radius: 8px; padding: 12px; margin-top: 5px; font-size: 12px;">
+    <h4 style="margin-top: 0; color: #ffffff; border-bottom: 1px solid #2b2b36; padding-bottom: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 13px;">
+      <span style="display: flex; align-items: center; gap: 6px;">📥 Options de Téléchargement</span>
+      <span id="closePanelBtn" style="cursor: pointer; font-size: 18px; color: #7a7a8a; font-weight: bold;">&times;</span>
+    </h4>
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div>
+        <label style="display: block; margin-bottom: 4px; color: #7a7a8a; font-weight: bold; font-size: 10px;">URL DU FLUX</label>
+        <input type="text" id="panelUrl" readonly style="width: 100%; box-sizing: border-box; background-color: #121214; border: 1px solid #2b2b36; color: #7a7a8a; padding: 6px; border-radius: 4px; font-family: monospace; font-size: 10px; outline: none;">
+      </div>
+      <div>
+        <label style="display: block; margin-bottom: 4px; color: #e1e1e6; font-weight: bold; font-size: 10px;">NOM DU FICHIER</label>
+        <input type="text" id="panelFileName" style="width: 100%; box-sizing: border-box; background-color: #121214; border: 1px solid #2b2b36; color: #ffffff; padding: 6px; border-radius: 4px; outline: none; font-size: 11px;">
+      </div>
+      <div>
+        <label style="display: block; margin-bottom: 4px; color: #e1e1e6; font-weight: bold; font-size: 10px;">DOSSIER DE DESTINATION</label>
+        <input type="text" id="panelDestFolder" style="width: 100%; box-sizing: border-box; background-color: #121214; border: 1px solid #2b2b36; color: #ffffff; padding: 6px; border-radius: 4px; outline: none; font-size: 11px;">
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <div style="flex: 1;">
+          <label style="display: block; margin-bottom: 4px; color: #e1e1e6; font-weight: bold; font-size: 10px;">FORMAT / CONVERSION</label>
+          <select id="panelFormat" style="width: 100%; box-sizing: border-box; background-color: #121214; border: 1px solid #2b2b36; color: #ffffff; padding: 5px; border-radius: 4px; outline: none; font-size: 11px;">
+            <option value="mp4">Vidéo MP4 (Remux direct)</option>
+            <option value="mp3">Audio MP3 (Extraction)</option>
+          </select>
+        </div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px;">
+        <button id="cancelDownloadBtn" class="btn" style="background-color: #3b3b4a;">Annuler</button>
+        <button id="startDownloadBtn" class="btn btn-play" style="font-weight: bold;">Démarrer</button>
+      </div>
+    </div>
+  </div>
+
   <div class="status" id="statusMsg">Envoyé avec succès !</div>
   <script src="popup.js"></script>
 </body>
