@@ -521,20 +521,15 @@ function showWebDownloadPanel(url, title) {
     browseBtn.disabled = true;
     browseBtn.textContent = 'Choix...';
     
-    fetch('http://localhost:8555/pick-directory', { method: 'POST' })
-      .then(r => r.json())
-      .then(data => {
-        browseBtn.disabled = false;
-        browseBtn.textContent = 'Parcourir...';
-        if (data.status === 'ok' && data.path) {
-          destInput.value = data.path;
-        }
-      })
-      .catch(err => {
-        browseBtn.disabled = false;
-        browseBtn.textContent = 'Parcourir...';
+    chrome.runtime.sendMessage({ action: 'pickDirectory' }, (data) => {
+      browseBtn.disabled = false;
+      browseBtn.textContent = 'Parcourir...';
+      if (data && data.status === 'ok' && data.path) {
+        destInput.value = data.path;
+      } else {
         alert("Impossible d'ouvrir le sélecteur. Assurez-vous que FFmpeg Studio est lancé.");
-      });
+      }
+    });
   });
   destRow.appendChild(browseBtn);
   box.appendChild(destFolderField.container);
@@ -635,19 +630,17 @@ function showWebDownloadPanel(url, title) {
   });
   
   // Fetch default path
-  const cleanTitle = encodeURIComponent(title || "video");
-  fetch(`http://localhost:8555/get-default-path?title=${cleanTitle}&preset=mp4`)
-    .then(r => r.json())
-    .then(data => {
+  chrome.runtime.sendMessage({ action: 'getDefaultPath', title: title, preset: 'mp4' }, (data) => {
+    if (data && data.status !== 'error') {
       fileNameField.input.value = data.fileName;
       destFolderField.input.value = data.defaultFolder;
-    })
-    .catch(err => {
+    } else {
       const safeTitle = (title || "video").replace(/[\\/:*?"<>|]/g, "_").trim();
       fileNameField.input.value = (safeTitle ? safeTitle : "video") + ".mp4";
       destFolderField.input.value = "C:\\Users\\...\\Downloads";
       showToast('⚠ Lancez FFmpeg Studio pour charger le dossier par défaut.', false);
-    });
+    }
+  });
     
   // Start action listener
   startBtn.addEventListener('click', () => {
@@ -674,30 +667,20 @@ function showWebDownloadPanel(url, title) {
       jobTitle = jobTitle.substring(0, jobTitle.length - 4);
     }
     
-    fetch('http://localhost:8555/add-stream', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        url: url,
-        title: jobTitle,
-        play: false,
-        download: true,
-        outputPath: outputPath
-      })
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (data.status === 'ok') {
+    chrome.runtime.sendMessage({
+      action: 'sendToApp',
+      url: url,
+      title: jobTitle,
+      play: false,
+      download: true,
+      outputPath: outputPath
+    }, (data) => {
+      if (data && data.status === 'ok') {
         showToast('✓ Téléchargement démarré dans FFmpeg Studio !');
         document.body.removeChild(modal);
       } else {
-        showToast('⚠ Erreur de réponse de l\'application.', false);
+        showToast('⚠ Assurez-vous que FFmpeg Studio est ouvert.', false);
       }
-    })
-    .catch(err => {
-      showToast('⚠ Assurez-vous que FFmpeg Studio est ouvert.', false);
     });
   });
 }

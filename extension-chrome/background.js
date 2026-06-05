@@ -217,7 +217,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ url: message.url, title: message.title, play: message.play })
+      body: JSON.stringify({
+        url: message.url,
+        title: message.title,
+        play: message.play,
+        download: message.download || false,
+        outputPath: message.outputPath || null
+      })
     })
     .then(response => response.json())
     .then(data => {
@@ -227,5 +233,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ status: "error", error: error.message });
     });
     return true; // Garder la communication ouverte pour la réponse asynchrone
+  } else if (message.action === "getDefaultPath") {
+    const cleanTitle = encodeURIComponent(message.title || "video");
+    const preset = message.preset || "mp4";
+    fetch(`http://localhost:8555/get-default-path?title=${cleanTitle}&preset=${preset}`)
+      .then(response => response.json())
+      .then(data => {
+        sendResponse(data);
+      })
+      .catch(error => {
+        sendResponse({ status: "error", error: error.message });
+      });
+    return true; // Garder la communication ouverte
+  } else if (message.action === "pickDirectory") {
+    fetch("http://localhost:8555/pick-directory", { method: "POST" })
+      .then(response => response.json())
+      .then(data => {
+        sendResponse(data);
+      })
+      .catch(error => {
+        sendResponse({ status: "error", error: error.message });
+      });
+    return true; // Garder la communication ouverte
   }
 });
