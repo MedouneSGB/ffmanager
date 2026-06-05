@@ -313,6 +313,31 @@ function createFloatPanel(video) {
   return panel;
 }
 
+// Trouver le conteneur principal du lecteur vidéo en remontant le DOM
+// tant que la taille reste similaire à celle de la vidéo (pour englober les overlays publicitaires/contrôles)
+function getPlayerContainer(video) {
+  let current = video.parentElement;
+  if (!current) return null;
+  
+  const videoWidth = video.offsetWidth;
+  const videoHeight = video.offsetHeight;
+  let playerContainer = current;
+  
+  while (current && current !== document.body && current !== document.documentElement) {
+    const w = current.offsetWidth;
+    const h = current.offsetHeight;
+    
+    // Si l'ancêtre a des dimensions similaires (marge de 50px pour tolérer les barres de contrôle/bordures)
+    if (Math.abs(w - videoWidth) <= 50 && Math.abs(h - videoHeight) <= 50) {
+      playerContainer = current;
+    } else {
+      break;
+    }
+    current = current.parentElement;
+  }
+  return playerContainer;
+}
+
 // Find HTML5 video players on the page and append the button to their parent wrapper
 function scanForVideos() {
   injectStyles();
@@ -323,23 +348,25 @@ function scanForVideos() {
     // Ignore small layout videos (like badges or tiny avatars)
     if (video.offsetWidth < 150 || video.offsetHeight < 100) continue;
     
-    const parent = video.parentElement;
+    const parent = getPlayerContainer(video);
     if (!parent) continue;
     
-    // Check if already attached
-    const panel = parent.querySelector('.ffmpeg-float-panel');
-    if (!panel) {
+    let panel = video.__ffmpegPanel;
+    if (!panel || !document.body.contains(panel)) {
       // Style parent to relative if static so absolute children align correctly
       const style = window.getComputedStyle(parent);
       if (style.position === 'static') {
         parent.style.position = 'relative';
       }
       
-      const newPanel = createFloatPanel(video);
-      parent.appendChild(newPanel);
+      panel = createFloatPanel(video);
+      video.__ffmpegPanel = panel;
+      parent.appendChild(panel);
     } else {
-      // If it exists but is not the last child, re-append it so it sits on top of any newly created ad overlays
-      if (parent.lastChild !== panel) {
+      // S'assurer que le panel est toujours dans le bon parent et en dernier enfant (au-dessus des overlays)
+      if (panel.parentElement !== parent) {
+        parent.appendChild(panel);
+      } else if (parent.lastChild !== panel) {
         parent.appendChild(panel);
       }
     }
