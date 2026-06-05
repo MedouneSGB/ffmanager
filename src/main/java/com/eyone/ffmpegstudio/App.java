@@ -1787,22 +1787,47 @@ public class App extends Application {
                         String url = extractUrlFromJson(body);
                         String title = extractTitleFromJson(body);
                         boolean play = extractPlayFromJson(body);
-                        System.out.println("[DEBUG HTTP Server] URL extraite: " + url + " | title: " + title + " | play: " + play);
+                        boolean download = extractDownloadFromJson(body);
+                        String outputPath = extractOutputPathFromJson(body);
+                        System.out.println("[DEBUG HTTP Server] URL extraite: " + url + " | title: " + title + " | play: " + play + " | download: " + download + " | outputPath: " + outputPath);
                         
                         if (url != null && !url.isEmpty()) {
                             Platform.runLater(() -> {
+                                if (primaryStage != null) {
+                                    primaryStage.show();
+                                    primaryStage.toFront();
+                                    primaryStage.setIconified(false);
+                                }
+                                
                                 urlSourceRadio.setSelected(true);
                                 urlField.setText(url); // Déclenche le listener et réinitialise
                                 
                                 if (title != null && !title.isEmpty()) {
                                     suggestedTitleFromExtension = title;
                                     customOutputFile = null;
-                                    updateCustomOutputLabel(presetBox.getValue());
                                 }
                                 
                                 if (play) {
                                     System.out.println("[DEBUG HTTP Server] Declenchement de playActiveStream...");
                                     playActiveStream(primaryStage);
+                                } else if (download) {
+                                    if (outputPath != null && !outputPath.isEmpty()) {
+                                        customOutputFile = new java.io.File(outputPath);
+                                    } else {
+                                        customOutputFile = null;
+                                    }
+                                    
+                                    if (outputPath != null && outputPath.toLowerCase().endsWith(".mp3")) {
+                                        presetBox.setValue(Preset.EXTRACT_AUDIO_MP3);
+                                    } else {
+                                        presetBox.setValue(Preset.REMUX_MP4);
+                                    }
+                                    
+                                    updateCustomOutputLabel(presetBox.getValue());
+                                    System.out.println("[DEBUG HTTP Server] Declenchement de addJob...");
+                                    addJob();
+                                } else {
+                                    updateCustomOutputLabel(presetBox.getValue());
                                 }
                             });
                             
@@ -1824,6 +1849,71 @@ public class App extends Application {
                     OutputStream os = exchange.getResponseBody();
                     os.write(response);
                     os.close();
+                }
+            });
+
+            localServer.createContext("/get-default-path", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws java.io.IOException {
+                    // CORS preflight (OPTIONS)
+                    if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, OPTIONS");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+                        exchange.sendResponseHeaders(204, -1);
+                        return;
+                    }
+                    
+                    if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        String query = exchange.getRequestURI().getRawQuery();
+                        String title = "flux_telecharge";
+                        String extension = ".mp4";
+                        
+                        if (query != null) {
+                            for (String param : query.split("&")) {
+                                String[] pair = param.split("=");
+                                if (pair.length == 2) {
+                                    if ("title".equalsIgnoreCase(pair[0])) {
+                                        title = java.net.URLDecoder.decode(pair[1], "UTF-8");
+                                        // Clean filename for OS compatibility
+                                        title = title.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+                                    } else if ("preset".equalsIgnoreCase(pair[0])) {
+                                        String prs = java.net.URLDecoder.decode(pair[1], "UTF-8");
+                                        if ("mp3".equalsIgnoreCase(prs)) {
+                                            extension = ".mp3";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        String userHome = System.getProperty("user.home");
+                        java.io.File downloads = new java.io.File(userHome, "Downloads");
+                        if (!downloads.exists()) {
+                            downloads = new java.io.File(userHome);
+                        }
+                        
+                        String fullPath = new java.io.File(downloads, title + extension).getAbsolutePath();
+                        
+                        String responseJson = String.format(
+                            "{\"defaultFolder\":\"%s\",\"fileName\":\"%s\",\"fullPath\":\"%s\"}",
+                            downloads.getAbsolutePath().replace("\\", "\\\\"),
+                            (title + extension).replace("\\", "\\\\"),
+                            fullPath.replace("\\", "\\\\")
+                        );
+                        
+                        byte[] responseBytes = responseJson.getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                        exchange.getResponseHeaders().add("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(200, responseBytes.length);
+                        try (OutputStream os = exchange.getResponseBody()) {
+                            os.write(responseBytes);
+                        }
+                        return;
+                    }
+                    
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(405, -1);
                 }
             });
 
@@ -2096,6 +2186,21 @@ public class App extends Application {
     private boolean extractPlayFromJson(String json) {
         if (json == null) return false;
         return json.contains("\"play\":true") || json.contains("\"play\": true");
+    }
+
+    private boolean extractDownloadFromJson(String json) {
+        if (json == null) return false;
+        return json.contains("\"download\":true") || json.contains("\"download\": true");
+    }
+
+    private String extractOutputPathFromJson(String json) {
+        if (json == null) return null;
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"outputPath\"\\s*:\\s*\"([^\"]+)\"");
+        java.util.regex.Matcher matcher = pattern.matcher(json);
+        if (matcher.find()) {
+            return matcher.group(1).replace("\\\\", "\\").replace("\\/", "/");
+        }
+        return null;
     }
 
     private void stopProcess(Process process) {
