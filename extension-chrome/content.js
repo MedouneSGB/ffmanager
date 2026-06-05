@@ -249,21 +249,10 @@ function updateDropdown(dropdown) {
     
     const dlBtn = document.createElement('button');
     dlBtn.className = 'ffmpeg-action-btn';
-    dlBtn.textContent = 'Envoyer';
-    dlBtn.title = 'Envoyer à la file de téléchargement';
+    dlBtn.textContent = 'Télécharger';
+    dlBtn.title = 'Télécharger avec options';
     dlBtn.addEventListener('click', () => {
-      chrome.runtime.sendMessage({
-        action: 'sendToApp',
-        url: stream.url,
-        title: stream.title || '',
-        play: false
-      }, (response) => {
-        if (response && response.status === 'ok') {
-          showToast('✓ Envoyé avec succès à FFmpeg Studio !');
-        } else {
-          showToast('⚠ Erreur. Vérifiez que FFmpeg Studio est ouvert.', false);
-        }
-      });
+      showWebDownloadPanel(stream.url, stream.title || '');
     });
     
     const playBtn = document.createElement('button');
@@ -385,3 +374,279 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 // Initial scan
 scanForVideos();
+
+// Afficher le panel de téléchargement de type IDM directement sur la page web
+function showWebDownloadPanel(url, title) {
+  let modal = document.getElementById('ffmpeg-download-modal');
+  if (modal) {
+    document.body.removeChild(modal);
+  }
+  
+  modal = document.createElement('div');
+  modal.id = 'ffmpeg-download-modal';
+  Object.assign(modal.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backdropFilter: 'blur(4px)',
+    zIndex: '2147483647',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif"
+  });
+  
+  const box = document.createElement('div');
+  Object.assign(box.style, {
+    width: '360px',
+    backgroundColor: '#1a1a24',
+    border: '1px solid #7c4dff',
+    borderRadius: '8px',
+    padding: '16px',
+    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+    color: '#e1e1e6',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    boxSizing: 'border-box'
+  });
+  
+  const header = document.createElement('div');
+  Object.assign(header.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottom: '1px solid #2b2b36',
+    paddingBottom: '8px',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    color: '#ffffff'
+  });
+  header.innerHTML = '<span>📥 Options de Téléchargement</span>';
+  
+  const closeBtn = document.createElement('span');
+  closeBtn.textContent = '×';
+  Object.assign(closeBtn.style, {
+    cursor: 'pointer',
+    fontSize: '20px',
+    fontWeight: 'bold',
+    color: '#7a7a8a'
+  });
+  closeBtn.addEventListener('click', () => document.body.removeChild(modal));
+  header.appendChild(closeBtn);
+  box.appendChild(header);
+  
+  const createField = (labelText, value, isReadonly = false) => {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '4px';
+    
+    const label = document.createElement('label');
+    Object.assign(label.style, {
+      color: isReadonly ? '#7a7a8a' : '#e1e1e6',
+      fontWeight: 'bold',
+      fontSize: '10px',
+      textTransform: 'uppercase'
+    });
+    label.textContent = labelText;
+    container.appendChild(label);
+    
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value;
+    if (isReadonly) input.readOnly = true;
+    Object.assign(input.style, {
+      width: '100%',
+      boxSizing: 'border-box',
+      backgroundColor: '#121214',
+      border: '1px solid #2b2b36',
+      color: isReadonly ? '#7a7a8a' : '#ffffff',
+      padding: '8px',
+      borderRadius: '4px',
+      fontSize: '12px',
+      fontFamily: isReadonly ? 'monospace' : 'inherit',
+      outline: 'none'
+    });
+    if (!isReadonly) {
+      input.addEventListener('focus', () => input.style.borderColor = '#7c4dff');
+      input.addEventListener('blur', () => input.style.borderColor = '#2b2b36');
+    }
+    container.appendChild(input);
+    return { container, input };
+  };
+  
+  const urlField = createField('URL du flux', url, true);
+  box.appendChild(urlField.container);
+  
+  const fileNameField = createField('Nom du fichier', 'Chargement...');
+  box.appendChild(fileNameField.container);
+  
+  const destFolderField = createField('Dossier de destination', 'Chargement...');
+  box.appendChild(destFolderField.container);
+  
+  const formatContainer = document.createElement('div');
+  formatContainer.style.display = 'flex';
+  formatContainer.style.flexDirection = 'column';
+  formatContainer.style.gap = '4px';
+  
+  const formatLabel = document.createElement('label');
+  Object.assign(formatLabel.style, {
+    color: '#e1e1e6',
+    fontWeight: 'bold',
+    fontSize: '10px',
+    textTransform: 'uppercase'
+  });
+  formatLabel.textContent = 'Format / Conversion';
+  formatContainer.appendChild(formatLabel);
+  
+  const formatSelect = document.createElement('select');
+  Object.assign(formatSelect.style, {
+    width: '100%',
+    boxSizing: 'border-box',
+    backgroundColor: '#121214',
+    border: '1px solid #2b2b36',
+    color: '#ffffff',
+    padding: '8px',
+    borderRadius: '4px',
+    fontSize: '12px',
+    outline: 'none'
+  });
+  formatSelect.innerHTML = `
+    <option value="mp4">Vidéo MP4 (Remux direct)</option>
+    <option value="mp3">Audio MP3 (Extraction)</option>
+  `;
+  formatContainer.appendChild(formatSelect);
+  box.appendChild(formatContainer);
+  
+  const buttonContainer = document.createElement('div');
+  Object.assign(buttonContainer.style, {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '8px',
+    marginTop: '8px'
+  });
+  
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Annuler';
+  Object.assign(cancelBtn.style, {
+    backgroundColor: '#3b3b4a',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '8px 16px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 'bold'
+  });
+  cancelBtn.addEventListener('click', () => document.body.removeChild(modal));
+  
+  const startBtn = document.createElement('button');
+  startBtn.textContent = 'Démarrer';
+  Object.assign(startBtn.style, {
+    backgroundColor: '#00e676',
+    color: '#121214',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '8px 16px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 'bold'
+  });
+  
+  buttonContainer.appendChild(cancelBtn);
+  buttonContainer.appendChild(startBtn);
+  box.appendChild(buttonContainer);
+  
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+  
+  // Format change listener
+  formatSelect.addEventListener('change', (e) => {
+    const format = e.target.value;
+    let currentName = fileNameField.input.value;
+    if (format === 'mp3') {
+      if (currentName.endsWith('.mp4')) {
+        fileNameField.input.value = currentName.substring(0, currentName.length - 4) + '.mp3';
+      } else if (!currentName.endsWith('.mp3')) {
+        fileNameField.input.value = currentName + '.mp3';
+      }
+    } else {
+      if (currentName.endsWith('.mp3')) {
+        fileNameField.input.value = currentName.substring(0, currentName.length - 4) + '.mp4';
+      } else if (!currentName.endsWith('.mp4')) {
+        fileNameField.input.value = currentName + '.mp4';
+      }
+    }
+  });
+  
+  // Fetch default path
+  const cleanTitle = encodeURIComponent(title || "flux_telecharge");
+  fetch(`http://localhost:8555/get-default-path?title=${cleanTitle}&preset=mp4`)
+    .then(r => r.json())
+    .then(data => {
+      fileNameField.input.value = data.fileName;
+      destFolderField.input.value = data.defaultFolder;
+    })
+    .catch(err => {
+      const safeTitle = (title || "flux_telecharge").replace(/[\\/:*?"<>|]/g, "_").trim();
+      fileNameField.input.value = safeTitle + ".mp4";
+      destFolderField.input.value = "C:\\Users\\...\\Downloads";
+      showToast('⚠ Lancez FFmpeg Studio pour charger le dossier par défaut.', false);
+    });
+    
+  // Start action listener
+  startBtn.addEventListener('click', () => {
+    const fileName = fileNameField.input.value.trim();
+    const destFolder = destFolderField.input.value.trim();
+    
+    if (!fileName || fileName === 'Chargement...') {
+      alert('Veuillez saisir un nom de fichier.');
+      return;
+    }
+    if (!destFolder || destFolder === 'Chargement...') {
+      alert('Veuillez saisir un dossier de destination.');
+      return;
+    }
+    
+    let sep = '\\';
+    if (destFolder.includes('/')) {
+      sep = '/';
+    }
+    const outputPath = destFolder + (destFolder.endsWith(sep) ? "" : sep) + fileName;
+    
+    let jobTitle = fileName;
+    if (jobTitle.endsWith('.mp4') || jobTitle.endsWith('.mp3')) {
+      jobTitle = jobTitle.substring(0, jobTitle.length - 4);
+    }
+    
+    fetch('http://localhost:8555/add-stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url: url,
+        title: jobTitle,
+        play: false,
+        download: true,
+        outputPath: outputPath
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'ok') {
+        showToast('✓ Téléchargement démarré dans FFmpeg Studio !');
+        document.body.removeChild(modal);
+      } else {
+        showToast('⚠ Erreur de réponse de l\'application.', false);
+      }
+    })
+    .catch(err => {
+      showToast('⚠ Assurez-vous que FFmpeg Studio est ouvert.', false);
+    });
+  });
+}
