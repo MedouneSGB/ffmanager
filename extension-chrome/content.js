@@ -482,10 +482,12 @@ function showWebDownloadPanel(url, title) {
   const urlField = createField('URL du flux', url, true);
   box.appendChild(urlField.container);
   
-  const fileNameField = createField('Nom du fichier', 'Chargement...');
+  const fileNameField = createField('Nom du fichier', '');
+  fileNameField.input.placeholder = 'Chargement du nom...';
   box.appendChild(fileNameField.container);
   
-  const destFolderField = createField('Dossier de destination', 'Chargement...', true);
+  const destFolderField = createField('Dossier de destination', '', true);
+  destFolderField.input.placeholder = 'Chargement du dossier...';
   const destInput = destFolderField.input;
   
   const destRow = document.createElement('div');
