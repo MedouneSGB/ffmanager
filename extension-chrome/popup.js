@@ -79,20 +79,18 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("panelFormat").value = "mp4";
     
     // Récupérer le chemin de destination par défaut depuis le serveur Java
-    const cleanTitle = encodeURIComponent(title || "video");
-    fetch(`http://localhost:8555/get-default-path?title=${cleanTitle}&preset=mp4`)
-      .then(response => response.json())
-      .then(data => {
+    chrome.runtime.sendMessage({ action: "getDefaultPath", title: title, preset: "mp4" }, (data) => {
+      if (data && data.status !== "error") {
         document.getElementById("panelFileName").value = data.fileName;
         document.getElementById("panelDestFolder").value = data.defaultFolder;
-      })
-      .catch(error => {
+      } else {
         // Fallback si l'application locale n'est pas ouverte
         const safeTitle = (title || "video").replace(/[\\/:*?"<>|]/g, "_").trim();
         document.getElementById("panelFileName").value = (safeTitle ? safeTitle : "video") + ".mp4";
         document.getElementById("panelDestFolder").value = "C:\\Users\\...\\Downloads";
         showStatus("⚠ Lancez FFmpeg Studio pour charger le dossier par défaut.", "#ff9800", "rgba(255, 152, 0, 0.1)");
-      });
+      }
+    });
   }
 
   function hideDownloadPanel() {
@@ -111,20 +109,15 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.disabled = true;
     btn.textContent = "Choix...";
     
-    fetch("http://localhost:8555/pick-directory", { method: "POST" })
-      .then(response => response.json())
-      .then(data => {
-        btn.disabled = false;
-        btn.textContent = "Parcourir...";
-        if (data.status === "ok" && data.path) {
-          document.getElementById("panelDestFolder").value = data.path;
-        }
-      })
-      .catch(error => {
-        btn.disabled = false;
-        btn.textContent = "Parcourir...";
+    chrome.runtime.sendMessage({ action: "pickDirectory" }, (data) => {
+      btn.disabled = false;
+      btn.textContent = "Parcourir...";
+      if (data && data.status === "ok" && data.path) {
+        document.getElementById("panelDestFolder").value = data.path;
+      } else {
         alert("Impossible d'ouvrir le sélecteur. Assurez-vous que FFmpeg Studio est lancé.");
-      });
+      }
+    });
   });
 
   // Mettre à jour l'extension du fichier en fonction du format sélectionné
@@ -176,52 +169,36 @@ document.addEventListener("DOMContentLoaded", () => {
       title = title.substring(0, title.length - 4);
     }
 
-    fetch("http://localhost:8555/add-stream", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        url: url,
-        title: title,
-        play: false,
-        download: true,
-        outputPath: outputPath
-      })
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.status === "ok") {
+    chrome.runtime.sendMessage({
+      action: "sendToApp",
+      url: url,
+      title: title,
+      play: false,
+      download: true,
+      outputPath: outputPath
+    }, (data) => {
+      if (data && data.status === "ok") {
         showStatus("✓ Téléchargement démarré dans FFmpeg Studio !", "#00e676", "rgba(0, 230, 118, 0.1)");
         hideDownloadPanel();
       } else {
-        showStatus("⚠ Erreur de réponse de l'application.", "#ff1744", "rgba(255, 23, 68, 0.1)");
+        showStatus("⚠ Assurez-vous que FFmpeg Studio est ouvert.", "#ff1744", "rgba(255, 23, 68, 0.1)");
       }
-    })
-    .catch(error => {
-      showStatus("⚠ Assurez-vous que FFmpeg Studio est ouvert.", "#ff1744", "rgba(255, 23, 68, 0.1)");
     });
   });
 
   // Envoyer l'URL du flux à l'application Java pour la lecture directe
   function sendPlayToApp(url, title) {
-    fetch("http://localhost:8555/add-stream", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ url: url, title: title, play: true })
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.status === "ok") {
+    chrome.runtime.sendMessage({
+      action: "sendToApp",
+      url: url,
+      title: title,
+      play: true
+    }, (data) => {
+      if (data && data.status === "ok") {
         showStatus("✓ Lecture lancée avec succès !", "#00e676", "rgba(0, 230, 118, 0.1)");
       } else {
-        showStatus("⚠ Erreur de réponse de l'application.", "#ff1744", "rgba(255, 23, 68, 0.1)");
+        showStatus("⚠ Assurez-vous que FFmpeg Studio est ouvert.", "#ff1744", "rgba(255, 23, 68, 0.1)");
       }
-    })
-    .catch(error => {
-      showStatus("⚠ Assurez-vous que FFmpeg Studio est ouvert.", "#ff1744", "rgba(255, 23, 68, 0.1)");
     });
   }
 
