@@ -72,8 +72,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("downloadPanel").style.display = "block";
     
     document.getElementById("panelUrl").value = url;
-    document.getElementById("panelFileName").value = "Chargement...";
-    document.getElementById("panelDestFolder").value = "Chargement...";
+    document.getElementById("panelFileName").value = "";
+    document.getElementById("panelFileName").placeholder = "Chargement du nom...";
+    document.getElementById("panelDestFolder").value = "";
+    document.getElementById("panelDestFolder").placeholder = "Chargement du dossier...";
     document.getElementById("panelFormat").value = "mp4";
     
     // Récupérer le chemin de destination par défaut depuis le serveur Java
