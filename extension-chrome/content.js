@@ -485,7 +485,56 @@ function showWebDownloadPanel(url, title) {
   const fileNameField = createField('Nom du fichier', 'Chargement...');
   box.appendChild(fileNameField.container);
   
-  const destFolderField = createField('Dossier de destination', 'Chargement...');
+  const destFolderField = createField('Dossier de destination', 'Chargement...', true);
+  const destInput = destFolderField.input;
+  
+  const destRow = document.createElement('div');
+  Object.assign(destRow.style, {
+    display: 'flex',
+    gap: '8px',
+    width: '100%',
+    alignItems: 'center'
+  });
+  
+  destInput.parentNode.insertBefore(destRow, destInput);
+  destRow.appendChild(destInput);
+  
+  const browseBtn = document.createElement('button');
+  browseBtn.textContent = 'Parcourir...';
+  Object.assign(browseBtn.style, {
+    backgroundColor: '#7c4dff',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '7px 10px',
+    cursor: 'pointer',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    whiteSpace: 'nowrap',
+    boxSizing: 'border-box'
+  });
+  
+  browseBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    browseBtn.disabled = true;
+    browseBtn.textContent = 'Choix...';
+    
+    fetch('http://localhost:8555/pick-directory', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        browseBtn.disabled = false;
+        browseBtn.textContent = 'Parcourir...';
+        if (data.status === 'ok' && data.path) {
+          destInput.value = data.path;
+        }
+      })
+      .catch(err => {
+        browseBtn.disabled = false;
+        browseBtn.textContent = 'Parcourir...';
+        alert("Impossible d'ouvrir le sélecteur. Assurez-vous que FFmpeg Studio est lancé.");
+      });
+  });
+  destRow.appendChild(browseBtn);
   box.appendChild(destFolderField.container);
   
   const formatContainer = document.createElement('div');
@@ -584,7 +633,7 @@ function showWebDownloadPanel(url, title) {
   });
   
   // Fetch default path
-  const cleanTitle = encodeURIComponent(title || "flux_telecharge");
+  const cleanTitle = encodeURIComponent(title || "video");
   fetch(`http://localhost:8555/get-default-path?title=${cleanTitle}&preset=mp4`)
     .then(r => r.json())
     .then(data => {
@@ -592,8 +641,8 @@ function showWebDownloadPanel(url, title) {
       destFolderField.input.value = data.defaultFolder;
     })
     .catch(err => {
-      const safeTitle = (title || "flux_telecharge").replace(/[\\/:*?"<>|]/g, "_").trim();
-      fileNameField.input.value = safeTitle + ".mp4";
+      const safeTitle = (title || "video").replace(/[\\/:*?"<>|]/g, "_").trim();
+      fileNameField.input.value = (safeTitle ? safeTitle : "video") + ".mp4";
       destFolderField.input.value = "C:\\Users\\...\\Downloads";
       showToast('⚠ Lancez FFmpeg Studio pour charger le dossier par défaut.', false);
     });

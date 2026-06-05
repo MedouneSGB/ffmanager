@@ -741,7 +741,7 @@ public class App extends Application {
             if (!downloads.exists()) {
                 downloads = new File(userHome);
             }
-            String baseName = "flux_telecharge";
+            String baseName = "video";
             if (suggestedTitleFromExtension != null && !suggestedTitleFromExtension.isEmpty()) {
                 baseName = suggestedTitleFromExtension;
             }
@@ -1866,7 +1866,7 @@ public class App extends Application {
                     
                     if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
                         String query = exchange.getRequestURI().getRawQuery();
-                        String title = "flux_telecharge";
+                        String title = "video";
                         String extension = ".mp4";
                         
                         if (query != null) {
@@ -1877,6 +1877,9 @@ public class App extends Application {
                                         title = java.net.URLDecoder.decode(pair[1], "UTF-8");
                                         // Clean filename for OS compatibility
                                         title = title.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+                                        if (title.isEmpty()) {
+                                            title = "video";
+                                        }
                                     } else if ("preset".equalsIgnoreCase(pair[0])) {
                                         String prs = java.net.URLDecoder.decode(pair[1], "UTF-8");
                                         if ("mp3".equalsIgnoreCase(prs)) {
@@ -1908,6 +1911,81 @@ public class App extends Application {
                         exchange.sendResponseHeaders(200, responseBytes.length);
                         try (OutputStream os = exchange.getResponseBody()) {
                             os.write(responseBytes);
+                        }
+                        return;
+                    }
+                    
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(405, -1);
+                }
+            });
+
+            localServer.createContext("/pick-directory", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws java.io.IOException {
+                    // CORS preflight (OPTIONS)
+                    if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, OPTIONS");
+                        exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+                        exchange.sendResponseHeaders(204, -1);
+                        return;
+                    }
+                    
+                    if ("POST".equalsIgnoreCase(exchange.getRequestMethod()) || "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        final java.util.concurrent.CompletableFuture<String> futurePath = new java.util.concurrent.CompletableFuture<>();
+                        
+                        Platform.runLater(() -> {
+                            try {
+                                if (primaryStage != null) {
+                                    primaryStage.show();
+                                    primaryStage.toFront();
+                                    primaryStage.setIconified(false);
+                                }
+                                
+                                javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
+                                chooser.setTitle("Choisir le dossier de destination");
+                                
+                                String userHome = System.getProperty("user.home");
+                                java.io.File downloads = new java.io.File(userHome, "Downloads");
+                                if (downloads.exists()) {
+                                    chooser.setInitialDirectory(downloads);
+                                } else {
+                                    chooser.setInitialDirectory(new java.io.File(userHome));
+                                }
+                                
+                                java.io.File selectedDirectory = chooser.showDialog(primaryStage);
+                                if (selectedDirectory != null) {
+                                    futurePath.complete(selectedDirectory.getAbsolutePath());
+                                } else {
+                                    futurePath.complete(""); // Annulé
+                                }
+                            } catch (Exception ex) {
+                                futurePath.completeExceptionally(ex);
+                            }
+                        });
+                        
+                        try {
+                            // Attendre max 60 secondes l'interaction de l'utilisateur
+                            String path = futurePath.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                            String jsonResponse = String.format("{\"status\":\"ok\",\"path\":\"%s\"}", path.replace("\\", "\\\\"));
+                            
+                            byte[] responseBytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
+                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                            exchange.getResponseHeaders().add("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(200, responseBytes.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(responseBytes);
+                            }
+                        } catch (Exception ex) {
+                            String jsonResponse = "{\"status\":\"error\",\"message\":\"" + ex.getMessage() + "\"}";
+                            byte[] responseBytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
+                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                            exchange.getResponseHeaders().add("Content-Type", "application/json");
+                            exchange.sendResponseHeaders(500, responseBytes.length);
+                            try (OutputStream os = exchange.getResponseBody()) {
+                                os.write(responseBytes);
+                            }
                         }
                         return;
                     }

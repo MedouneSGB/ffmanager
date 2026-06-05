@@ -77,7 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("panelFormat").value = "mp4";
     
     // Récupérer le chemin de destination par défaut depuis le serveur Java
-    const cleanTitle = encodeURIComponent(title || "flux_telecharge");
+    const cleanTitle = encodeURIComponent(title || "video");
     fetch(`http://localhost:8555/get-default-path?title=${cleanTitle}&preset=mp4`)
       .then(response => response.json())
       .then(data => {
@@ -86,8 +86,8 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .catch(error => {
         // Fallback si l'application locale n'est pas ouverte
-        const safeTitle = (title || "flux_telecharge").replace(/[\\/:*?"<>|]/g, "_").trim();
-        document.getElementById("panelFileName").value = safeTitle + ".mp4";
+        const safeTitle = (title || "video").replace(/[\\/:*?"<>|]/g, "_").trim();
+        document.getElementById("panelFileName").value = (safeTitle ? safeTitle : "video") + ".mp4";
         document.getElementById("panelDestFolder").value = "C:\\Users\\...\\Downloads";
         showStatus("⚠ Lancez FFmpeg Studio pour charger le dossier par défaut.", "#ff9800", "rgba(255, 152, 0, 0.1)");
       });
@@ -101,6 +101,29 @@ document.addEventListener("DOMContentLoaded", () => {
   // Fermer le panel
   document.getElementById("closePanelBtn").addEventListener("click", hideDownloadPanel);
   document.getElementById("cancelDownloadBtn").addEventListener("click", hideDownloadPanel);
+
+  // Parcourir le dossier de destination local via l'application Java
+  document.getElementById("browseDestBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("browseDestBtn");
+    btn.disabled = true;
+    btn.textContent = "Choix...";
+    
+    fetch("http://localhost:8555/pick-directory", { method: "POST" })
+      .then(response => response.json())
+      .then(data => {
+        btn.disabled = false;
+        btn.textContent = "Parcourir...";
+        if (data.status === "ok" && data.path) {
+          document.getElementById("panelDestFolder").value = data.path;
+        }
+      })
+      .catch(error => {
+        btn.disabled = false;
+        btn.textContent = "Parcourir...";
+        alert("Impossible d'ouvrir le sélecteur. Assurez-vous que FFmpeg Studio est lancé.");
+      });
+  });
 
   // Mettre à jour l'extension du fichier en fonction du format sélectionné
   document.getElementById("panelFormat").addEventListener("change", (e) => {
