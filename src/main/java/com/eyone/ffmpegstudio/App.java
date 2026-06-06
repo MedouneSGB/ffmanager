@@ -413,9 +413,27 @@ public class App extends Application {
     }
 
     private void initFFmpegPaths() {
-        ffmpegPath = prefs.get("ffmpegPath", "ffmpeg");
-        ffprobePath = prefs.get("ffprobePath", "ffprobe");
-        
+        // 1. Chemins personnalisés explicitement configurés par l'utilisateur (priorité absolue).
+        String savedFf = prefs.get("ffmpegPath", null);
+        String savedFp = prefs.get("ffprobePath", null);
+        if (savedFf != null && savedFp != null && checkBinaries(savedFf, savedFp)) {
+            ffmpegPath = savedFf;
+            ffprobePath = savedFp;
+            return;
+        }
+
+        // 2. Binaires embarqués livrés avec l'application (mode autonome, sans installation).
+        String[] bundled = findBundledBinaries();
+        if (bundled != null && checkBinaries(bundled[0], bundled[1])) {
+            ffmpegPath = bundled[0];
+            ffprobePath = bundled[1];
+            return;
+        }
+
+        // 3. Repli sur le PATH système.
+        ffmpegPath = "ffmpeg";
+        ffprobePath = "ffprobe";
+
         if (!checkBinaries(ffmpegPath, ffprobePath)) {
             String os = System.getProperty("os.name").toLowerCase();
             if (os.contains("win")) {
@@ -471,6 +489,68 @@ public class App extends Application {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Recherche les binaires FFmpeg/ffprobe embarqués à côté de l'application.
+     *
+     * Avec jpackage, le JAR est déployé dans le dossier {@code app/} de l'image
+     * applicative ; le CI y copie également ffmpeg(.exe) et ffprobe(.exe). On
+     * localise donc le répertoire du JAR en cours d'exécution et on y cherche
+     * les exécutables (ou dans un sous-dossier {@code ffmpeg/} ou {@code bin/}).
+     *
+     * @return un tableau {ffmpeg, ffprobe} (chemins absolus) ou {@code null}
+     *         si aucun binaire embarqué n'est trouvé (ex : lancement en dev).
+     */
+    private String[] findBundledBinaries() {
+        try {
+            File codeSource = new File(
+                    App.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            File baseDir = codeSource.isDirectory() ? codeSource : codeSource.getParentFile();
+            if (baseDir == null) return null;
+
+            boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
+            String ffName = isWindows ? "ffmpeg.exe" : "ffmpeg";
+            String fpName = isWindows ? "ffprobe.exe" : "ffprobe";
+
+            File[] candidateDirs = {
+                    baseDir,
+                    new File(baseDir, "ffmpeg"),
+                    new File(baseDir, "bin")
+            };
+
+            for (File dir : candidateDirs) {
+                File ff = new File(dir, ffName);
+                File fp = new File(dir, fpName);
+                if (ff.isFile() && fp.isFile()) {
+                    // Sur macOS/Linux les binaires extraits d'un zip perdent souvent
+                    // le bit exécutable, et macOS les met en quarantaine Gatekeeper.
+                    if (!isWindows) {
+                        ff.setExecutable(true, false);
+                        fp.setExecutable(true, false);
+                        clearMacQuarantine(ff);
+                        clearMacQuarantine(fp);
+                    }
+                    return new String[]{ ff.getAbsolutePath(), fp.getAbsolutePath() };
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[FFmpeg] Détection des binaires embarqués impossible : " + e.getMessage());
+        }
+        return null;
+    }
+
+    /** Retire l'attribut de quarantaine macOS pour qu'un binaire embarqué ne soit pas bloqué par Gatekeeper. */
+    private void clearMacQuarantine(File binary) {
+        if (!System.getProperty("os.name").toLowerCase().contains("mac")) return;
+        try {
+            new ProcessBuilder("xattr", "-d", "com.apple.quarantine", binary.getAbsolutePath())
+                    .redirectErrorStream(true)
+                    .start()
+                    .waitFor();
+        } catch (Exception ignore) {
+            // Best-effort : si l'attribut n'existe pas, xattr renvoie une erreur sans gravité.
         }
     }
 

@@ -72,7 +72,8 @@ Que vous souhaitiez convertir des fichiers locaux, extraire des pistes audio, t�
 ### Prérequis
 *   **Java Development Kit (JDK) 21** ou supérieur.
 *   **Maven** pour la gestion des dépendances et de la compilation.
-*   **FFmpeg** et **ffprobe** installés et configurés dans votre variable d'environnement `PATH` (ou configurés manuellement via l'interface).
+*   **FFmpeg** et **ffprobe** : **inutiles avec les versions packagées** (portable ZIP / installeur EXE / DMG), qui embarquent directement les binaires — l'application fonctionne dès le premier lancement, sans installation ni configuration du `PATH`.
+    *   *Uniquement pour le lancement en mode développement* (`mvn javafx:run`), FFmpeg doit être installé et accessible via le `PATH` (ou configuré manuellement via l'interface).
     *   *Installation sous Windows* : `winget install ffmpeg`
     *   *Liens utiles* : [Dépôt GitHub FFmpeg](https://github.com/FFmpeg/FFmpeg) | [Site officiel FFmpeg](https://ffmpeg.org/)
 
