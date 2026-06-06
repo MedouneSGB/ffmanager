@@ -37,9 +37,14 @@ src/main/java/com/eyone/ffmpegstudio/
 mvn javafx:run
 ```
 
+## FFmpeg embarqué
+
+Les builds release (CI) embarquent ffmpeg/ffprobe dans le dossier `app/` de
+l'image jpackage. `App.findBundledBinaries()` les détecte au lancement.
+Ordre de résolution : prefs utilisateur → binaire embarqué → PATH → dossiers
+système. En dev (`mvn javafx:run`), aucun binaire embarqué → repli sur le PATH.
+
 ## TODO
 
-- Couche d'options avancées (codec, CRF, résolution) qui écrase les valeurs du preset
-- Embarquer ffmpeg.exe / ffprobe.exe via jpackage (app autonome, sans PATH)
 - Nettoyage des fichiers temporaires + limites de taille de file
 - Découper App.java en FXML + controller quand ça grossit

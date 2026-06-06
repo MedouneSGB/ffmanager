@@ -42,6 +42,25 @@ jobs:
         cp target/ffmpeg-studio-${{ steps.get_version.outputs.version }}.jar target/input-jar/
       shell: bash
 
+    # Telecharge ffmpeg + ffprobe et les place dans le dossier d'entree jpackage.
+    # Ils seront copies dans le dossier app/ de l'image, a cote du JAR, ou
+    # findBundledBinaries() (App.java) les detecte au lancement -> app autonome.
+    # On utilise les paquets npm @ffmpeg-installer / @ffprobe-installer : ils
+    # resolvent automatiquement le bon binaire selon l'OS et l'architecture
+    # (win32-x64, darwin-arm64, darwin-x64...).
+    - name: Download & Bundle FFmpeg binaries
+      shell: bash
+      run: |
+        npm install @ffmpeg-installer/ffmpeg @ffprobe-installer/ffprobe
+        FF=$(node -e "console.log(require('@ffmpeg-installer/ffmpeg').path)")
+        FP=$(node -e "console.log(require('@ffprobe-installer/ffprobe').path)")
+        echo "ffmpeg  -> $FF"
+        echo "ffprobe -> $FP"
+        cp "$FF" "target/input-jar/$(basename "$FF")"
+        cp "$FP" "target/input-jar/$(basename "$FP")"
+        chmod +x target/input-jar/ffmpeg* target/input-jar/ffprobe* 2>/dev/null || true
+        ls -la target/input-jar/
+
     # Etape de conversion de l'icone PNG en format ICNS sous macOS
     - name: Convert PNG to ICNS (macOS)
       if: matrix.os == 'macos-latest'
