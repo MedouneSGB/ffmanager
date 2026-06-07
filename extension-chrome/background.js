@@ -166,6 +166,10 @@ function addStream(tabId, url) {
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     const url = details.url;
+    // Ignorer les segments d'init ou de flux fragmentés (ex: Twitter segments)
+    if (url.includes("/avc1/") || url.includes("/mp4a/") || url.includes(".m4s") || url.includes("seg_") || url.includes("-init.mp4")) {
+      return;
+    }
     // Filtrage des flux vidéo ou fichiers multimédias (.m3u8, .mp4, .mpd, .webm)
     if (url.includes(".m3u8") || url.includes(".mp4") || url.includes(".mpd") || url.includes(".webm")) {
       const tabId = details.tabId;

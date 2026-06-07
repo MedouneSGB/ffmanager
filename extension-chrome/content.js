@@ -351,23 +351,28 @@ function scanForVideos() {
     const parent = getPlayerContainer(video);
     if (!parent) continue;
     
+    // Si un conteneur d'overlay comme .UhUzCf ou .Wkyg5e existe dans le parent, on l'utilise
+    // comme parent direct pour notre bouton flottant afin de rester au-dessus et d'être cliquable.
+    const overlay = parent.querySelector('.UhUzCf, .Wkyg5e');
+    const targetParent = overlay || parent;
+    
     let panel = video.__ffmpegPanel;
     if (!panel || !document.body.contains(panel)) {
       // Style parent to relative if static so absolute children align correctly
-      const style = window.getComputedStyle(parent);
+      const style = window.getComputedStyle(targetParent);
       if (style.position === 'static') {
-        parent.style.position = 'relative';
+        targetParent.style.position = 'relative';
       }
       
       panel = createFloatPanel(video);
       video.__ffmpegPanel = panel;
-      parent.appendChild(panel);
+      targetParent.appendChild(panel);
     } else {
       // S'assurer que le panel est toujours dans le bon parent et en dernier enfant (au-dessus des overlays)
-      if (panel.parentElement !== parent) {
-        parent.appendChild(panel);
-      } else if (parent.lastChild !== panel) {
-        parent.appendChild(panel);
+      if (panel.parentElement !== targetParent) {
+        targetParent.appendChild(panel);
+      } else if (targetParent.lastChild !== panel) {
+        targetParent.appendChild(panel);
       }
     }
   }
