@@ -92,6 +92,7 @@ public class App extends Application {
     private Process activeTransmuxProcess;
     private javafx.concurrent.Task<String> activePrepTask;
     private String activePrepUrl;
+    private String activeTransmuxUrl;
 
     @Override
     public void start(Stage stage) {
@@ -976,6 +977,7 @@ public class App extends Application {
         pb.redirectOutput(ProcessBuilder.Redirect.to(new File(tempHlsDir, "transmux.log")));
         
         activeTransmuxProcess = pb.start();
+        activeTransmuxUrl = source;
     }
 
     private void openMediaPlayerStage(String mediaUrl, Stage parentStage) {
@@ -2193,24 +2195,46 @@ public class App extends Application {
 
                                     if (isFmp4) {
                                         System.out.println("[HLS Proxy] Fragmented MP4 détecté. Redirection vers le transmuxeur local...");
-                                        startHlsTransmux(targetUrl);
-                                        File playlistFile = new File(tempHlsDir, "playlist.m3u8");
-                                        int waitCount = 0;
-                                        while ((!playlistFile.exists() || playlistFile.length() == 0) && waitCount < 100) {
-                                            try {
-                                                Thread.sleep(50);
-                                            } catch (InterruptedException ie) {
-                                                Thread.currentThread().interrupt();
+                                        boolean alreadyRunning = false;
+                                        synchronized (App.this) {
+                                            if (activeTransmuxUrl != null && activeTransmuxUrl.equals(targetUrl)) {
+                                                alreadyRunning = true;
                                             }
-                                            waitCount++;
                                         }
-                                        if (playlistFile.exists()) {
-                                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-                                            exchange.getResponseHeaders().add("Location", "http://localhost:8555/local-hls/playlist.m3u8");
-                                            exchange.sendResponseHeaders(302, -1);
-                                            return;
+                                        
+                                        if (!alreadyRunning) {
+                                            startHlsTransmux(targetUrl);
                                         } else {
-                                            System.err.println("[HLS Proxy] Timeout de transmuxage fMP4.");
+                                            System.out.println("[HLS Proxy] Le transmuxage de cette URL est déjà en cours d'exécution ou terminé.");
+                                        }
+                                        
+                                        File playlistFile = null;
+                                        synchronized (App.this) {
+                                            if (tempHlsDir != null) {
+                                                playlistFile = new File(tempHlsDir, "playlist.m3u8");
+                                            }
+                                        }
+                                        
+                                        if (playlistFile != null) {
+                                            int waitCount = 0;
+                                            while ((!playlistFile.exists() || playlistFile.length() == 0) && waitCount < 100) {
+                                                try {
+                                                    Thread.sleep(50);
+                                                } catch (InterruptedException ie) {
+                                                    Thread.currentThread().interrupt();
+                                                }
+                                                waitCount++;
+                                            }
+                                            if (playlistFile.exists()) {
+                                                exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                                                exchange.getResponseHeaders().add("Location", "http://localhost:8555/local-hls/playlist.m3u8");
+                                                exchange.sendResponseHeaders(302, -1);
+                                                return;
+                                            } else {
+                                                System.err.println("[HLS Proxy] Timeout de transmuxage fMP4.");
+                                            }
+                                        } else {
+                                            System.err.println("[HLS Proxy] Dossier temp HLS introuvable.");
                                         }
                                     }
 
@@ -2560,6 +2584,7 @@ public class App extends Application {
             activePrepTask = null;
         }
         activePrepUrl = null;
+        activeTransmuxUrl = null;
         if (activeTransmuxProcess != null) {
             System.out.println("[Transmux] Arrêt du processus FFmpeg...");
             stopProcess(activeTransmuxProcess);
