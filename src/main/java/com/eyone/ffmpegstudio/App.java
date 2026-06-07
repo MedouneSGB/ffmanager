@@ -86,6 +86,7 @@ public class App extends Application {
     private HttpServer localServer;
     private Stage primaryStage;
     private Stage activePlayerStage;
+    private volatile boolean playerActive = false;
 
     // Transmuxing local HLS
     private java.io.File tempHlsDir;
@@ -927,6 +928,7 @@ public class App extends Application {
         }
 
         disposeMediaPlayer();
+        playerActive = true;
         if (source.startsWith("http://") || source.startsWith("https://")) {
             try {
                 String mediaUrl;
@@ -2066,7 +2068,7 @@ public class App extends Application {
                     }
                     
                     if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        if (activePlayerStage == null) {
+                        if (!playerActive) {
                             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
                             exchange.sendResponseHeaders(404, -1);
                             return;
@@ -2173,7 +2175,7 @@ public class App extends Application {
                     }
                     
                     if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        if (activePlayerStage == null) {
+                        if (!playerActive) {
                             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
                             exchange.sendResponseHeaders(404, -1);
                             return;
@@ -2228,6 +2230,49 @@ public class App extends Application {
                                                     isFmp4 = true;
                                                 }
                                             }
+                                        }
+                                    }
+
+                                    boolean isMaster = false;
+                                    for (String line : rawLines) {
+                                        if (line.trim().startsWith("#EXT-X-STREAM-INF")) {
+                                            isMaster = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if (isMaster) {
+                                        String baseUrl = currentUrl.substring(0, currentUrl.lastIndexOf('/') + 1);
+                                        java.net.URL baseUriObj = new java.net.URL(currentUrl);
+                                        String hostRoot = baseUriObj.getProtocol() + "://" + baseUriObj.getHost();
+                                        
+                                        String bestVariantUrl = null;
+                                        int maxBandwidth = -1;
+                                        String currentInfo = null;
+                                        for (String line : rawLines) {
+                                            String trimmed = line.trim();
+                                            if (trimmed.startsWith("#EXT-X-STREAM-INF")) {
+                                                currentInfo = trimmed;
+                                            } else if (!trimmed.startsWith("#") && !trimmed.isEmpty() && currentInfo != null) {
+                                                int bandwidth = 0;
+                                                java.util.regex.Pattern p = java.util.regex.Pattern.compile("BANDWIDTH=(\\d+)");
+                                                java.util.regex.Matcher m = p.matcher(currentInfo);
+                                                if (m.find()) {
+                                                    bandwidth = Integer.parseInt(m.group(1));
+                                                }
+                                                if (bandwidth > maxBandwidth) {
+                                                    maxBandwidth = bandwidth;
+                                                    bestVariantUrl = resolveUrl(trimmed, baseUrl, hostRoot);
+                                                }
+                                                currentInfo = null;
+                                            }
+                                        }
+                                        if (bestVariantUrl != null) {
+                                            System.out.println("[HLS Proxy] Master playlist détectée. Redirection vers la meilleure variante : " + bestVariantUrl);
+                                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                                            exchange.getResponseHeaders().add("Location", "http://localhost:8555/proxy-m3u8/playlist.m3u8?url=" + java.net.URLEncoder.encode(bestVariantUrl, "UTF-8"));
+                                            exchange.sendResponseHeaders(302, -1);
+                                            return;
                                         }
                                     }
 
@@ -2597,6 +2642,7 @@ public class App extends Application {
     }
 
     private void disposeMediaPlayer() {
+        playerActive = false;
         final MediaPlayer oldPlayer = mediaPlayer;
         if (oldPlayer != null) {
             mediaPlayer = null;
