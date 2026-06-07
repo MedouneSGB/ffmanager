@@ -82,7 +82,7 @@ Pour compiler et packager l'application sous forme de JAR "fat-shaded" autonome 
 ```bash
 mvn clean package
 ```
-Le fichier JAR généré se trouvera dans le dossier `target/` sous le nom `ffmpeg-studio-0.2.4.jar`.
+Le fichier JAR généré se trouvera dans le dossier `target/` sous le nom `ffmpeg-studio-0.2.8.jar`.
 
 ### Lancement
 Pour lancer l'application en mode développement via Maven :
@@ -91,7 +91,7 @@ mvn javafx:run
 ```
 Pour exécuter directement le JAR packagé :
 ```bash
-java -jar target/ffmpeg-studio-0.2.4.jar
+java -jar target/ffmpeg-studio-0.2.8.jar
 ```
 
 ---
