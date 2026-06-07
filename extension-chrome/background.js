@@ -11,6 +11,20 @@ function getCleanUrl(url) {
   }
 }
 
+function getDeduplicationKey(url) {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname.toLowerCase();
+    if (pathname.endsWith('.m3u8') || pathname.endsWith('.mp4') || pathname.endsWith('.mpd') || pathname.endsWith('.webm') ||
+        pathname.includes('.m3u8/') || pathname.includes('.mp4/') || pathname.includes('.mpd/') || pathname.includes('.webm/')) {
+      return urlObj.origin + urlObj.pathname;
+    }
+  } catch (e) {
+    // Fallback
+  }
+  return url;
+}
+
 function guessResolutionFromUrl(url) {
   const cleanUrl = getCleanUrl(url);
   
@@ -101,66 +115,72 @@ function addStream(tabId, url) {
     detectedStreams[tabId] = [];
   }
   
-  if (!detectedStreams[tabId].some(s => s.url === url)) {
-    let quality = "Auto/Direct";
-    const cleanUrl = getCleanUrl(url);
-    
-    if (hlsMappings[cleanUrl]) {
-      quality = `Flux HLS - ${hlsMappings[cleanUrl]}`;
-    } else if (url.includes(".m3u8")) {
-      const guessedRes = guessResolutionFromUrl(url);
-      if (guessedRes) {
-        quality = `Flux HLS - ${guessedRes}`;
-      } else {
-        quality = "Flux HLS"; // Valeur neutre par défaut si non détectée
-      }
-    } else if (url.includes(".mpd")) {
-      const guessedRes = guessResolutionFromUrl(url);
-      if (guessedRes) {
-        quality = `Flux DASH - ${guessedRes}`;
-      } else {
-        quality = "Flux DASH";
-      }
+  const dedupKey = getDeduplicationKey(url);
+  const existingIndex = detectedStreams[tabId].findIndex(s => getDeduplicationKey(s.url) === dedupKey);
+  
+  if (existingIndex !== -1) {
+    detectedStreams[tabId][existingIndex].url = url;
+    chrome.tabs.sendMessage(tabId, {
+      action: "streamsDetected",
+      streams: detectedStreams[tabId]
+    }).catch(() => {});
+    return;
+  }
+  
+  let quality = "Auto/Direct";
+  const cleanUrl = getCleanUrl(url);
+  
+  if (hlsMappings[cleanUrl]) {
+    quality = `Flux HLS - ${hlsMappings[cleanUrl]}`;
+  } else if (url.includes(".m3u8")) {
+    const guessedRes = guessResolutionFromUrl(url);
+    if (guessedRes) {
+      quality = `Flux HLS - ${guessedRes}`;
     } else {
-      const guessedRes = guessResolutionFromUrl(url);
-      if (guessedRes) {
-        quality = `${guessedRes}p`;
-      } else if (url.endsWith(".mp4")) {
-        quality = "Direct MP4";
-      } else if (url.endsWith(".webm")) {
-        quality = "Direct WebM";
-      }
+      quality = "Flux HLS";
+    }
+  } else if (url.includes(".mpd")) {
+    const guessedRes = guessResolutionFromUrl(url);
+    if (guessedRes) {
+      quality = `Flux DASH - ${guessedRes}`;
+    } else {
+      quality = "Flux DASH";
+    }
+  } else {
+    const guessedRes = guessResolutionFromUrl(url);
+    if (guessedRes) {
+      quality = `${guessedRes}p`;
+    } else if (url.endsWith(".mp4")) {
+      quality = "Direct MP4";
+    } else if (url.endsWith(".webm")) {
+      quality = "Direct WebM";
+    }
+  }
+  
+  chrome.tabs.get(tabId, (tab) => {
+    let title = "";
+    if (!chrome.runtime.lastError && tab && tab.title) {
+      title = tab.title;
     }
     
-    // Récupérer le titre de l'onglet de manière asynchrone
-    chrome.tabs.get(tabId, (tab) => {
-      let title = "";
-      if (!chrome.runtime.lastError && tab && tab.title) {
-        title = tab.title;
-      }
+    if (!detectedStreams[tabId].some(s => getDeduplicationKey(s.url) === dedupKey)) {
+      detectedStreams[tabId].push({ url, quality, title });
       
-      // S'assurer qu'un autre écouteur n'a pas ajouté le flux entre temps
-      if (!detectedStreams[tabId].some(s => s.url === url)) {
-        detectedStreams[tabId].push({ url, quality, title });
-        
-        // Mettre à jour le badge de l'icône de l'extension (nombre de flux)
-        chrome.action.setBadgeText({
-          tabId: tabId,
-          text: detectedStreams[tabId].length.toString()
-        });
-        chrome.action.setBadgeBackgroundColor({
-          tabId: tabId,
-          color: "#7c4dff" // Couleur d'accent violet
-        });
-        
-        // Notifier le content script de l'onglet
-        chrome.tabs.sendMessage(tabId, {
-          action: "streamsDetected",
-          streams: detectedStreams[tabId]
-        }).catch(() => {});
-      }
-    });
-  }
+      chrome.action.setBadgeText({
+        tabId: tabId,
+        text: detectedStreams[tabId].length.toString()
+      });
+      chrome.action.setBadgeBackgroundColor({
+        tabId: tabId,
+        color: "#7c4dff"
+      });
+      
+      chrome.tabs.sendMessage(tabId, {
+        action: "streamsDetected",
+        streams: detectedStreams[tabId]
+      }).catch(() => {});
+    }
+  });
 }
 
 chrome.webRequest.onBeforeRequest.addListener(
