@@ -1117,13 +1117,41 @@ public class App extends Application {
                 if (t != null) {
                     t.printStackTrace(System.err);
                 }
+                
+                String originalUrl = extractOriginalUrl(mediaUrl);
+                
                 Platform.runLater(() -> {
-                    Alert alert = new Alert(Alert.AlertType.ERROR);
-                    alert.setTitle("Erreur de Lecture");
-                    alert.setHeaderText("Impossible de lire ce flux vidéo.");
-                    alert.setContentText("Détail : " + err + "\n\nAssurez-vous que le flux est valide, actif et décodable nativement par le système (H.264/AAC).");
-                    styleDialog(alert, playerStage);
-                    alert.showAndWait();
+                    if (originalUrl != null) {
+                        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                        alert.setTitle("Erreur de Lecture");
+                        alert.setHeaderText("Lecture directe impossible");
+                        alert.setContentText("Ce flux vidéo ne peut pas être visionné en direct en raison de restrictions de format du système.\n\nVoulez-vous le télécharger à la place ?");
+                        styleDialog(alert, playerStage);
+                        
+                        ButtonType downloadBtnType = new ButtonType("Télécharger", ButtonBar.ButtonData.OK_DONE);
+                        ButtonType cancelBtnType = new ButtonType("Annuler", ButtonBar.ButtonData.CANCEL_CLOSE);
+                        alert.getButtonTypes().setAll(downloadBtnType, cancelBtnType);
+                        
+                        alert.showAndWait().ifPresent(response -> {
+                            if (response == downloadBtnType) {
+                                urlSourceRadio.setSelected(true);
+                                urlField.setText(originalUrl);
+                                presetBox.getSelectionModel().select(Preset.DOWNLOAD_STREAM);
+                                if (primaryStage != null) {
+                                    primaryStage.show();
+                                    primaryStage.toFront();
+                                    primaryStage.setIconified(false);
+                                }
+                            }
+                        });
+                    } else {
+                        Alert alert = new Alert(Alert.AlertType.ERROR);
+                        alert.setTitle("Erreur de Lecture");
+                        alert.setHeaderText("Impossible de lire ce flux vidéo.");
+                        alert.setContentText("Détail : " + err + "\n\nAssurez-vous que le flux est valide, actif et décodable nativement par le système (H.264/AAC).");
+                        styleDialog(alert, playerStage);
+                        alert.showAndWait();
+                    }
                     playerStage.close();
                 });
             });
@@ -2038,6 +2066,11 @@ public class App extends Application {
                     }
                     
                     if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        if (activePlayerStage == null) {
+                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                            exchange.sendResponseHeaders(404, -1);
+                            return;
+                        }
                         String query = exchange.getRequestURI().getRawQuery();
                         String targetUrl = null;
                         if (query != null && query.startsWith("url=")) {
@@ -2140,6 +2173,11 @@ public class App extends Application {
                     }
                     
                     if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        if (activePlayerStage == null) {
+                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                            exchange.sendResponseHeaders(404, -1);
+                            return;
+                        }
                         String query = exchange.getRequestURI().getRawQuery();
                         String targetUrl = null;
                         if (query != null && query.startsWith("url=")) {
@@ -2395,6 +2433,22 @@ public class App extends Application {
         } catch (Exception e) {
             return baseUrl + relativeUrl;
         }
+    }
+
+    private String extractOriginalUrl(String mediaUrl) {
+        if (mediaUrl == null) return null;
+        try {
+            if (mediaUrl.startsWith("http://localhost:8555/proxy-video/") || 
+                mediaUrl.startsWith("http://localhost:8555/proxy-m3u8/")) {
+                int q = mediaUrl.indexOf("url=");
+                if (q >= 0) {
+                    return java.net.URLDecoder.decode(mediaUrl.substring(q + 4), "UTF-8");
+                }
+            } else if (mediaUrl.startsWith("http://localhost:8555/local-hls/")) {
+                return activeTransmuxUrl;
+            }
+        } catch (Exception ignore) {}
+        return null;
     }
 
     private String extractUrlFromJson(String json) {
