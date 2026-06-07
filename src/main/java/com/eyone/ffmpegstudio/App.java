@@ -2309,9 +2309,25 @@ public class App extends Application {
                                                 waitCount++;
                                             }
                                             if (playlistFile.exists()) {
+                                                java.util.List<String> lines = java.nio.file.Files.readAllLines(playlistFile.toPath(), StandardCharsets.UTF_8);
+                                                StringBuilder sb = new StringBuilder();
+                                                for (String line : lines) {
+                                                    String trimmed = line.trim();
+                                                    if (trimmed.startsWith("#")) {
+                                                        sb.append(trimmed).append("\n");
+                                                    } else if (!trimmed.isEmpty()) {
+                                                        sb.append("http://localhost:8555/local-hls/").append(trimmed).append("\n");
+                                                    } else {
+                                                        sb.append("\n");
+                                                    }
+                                                }
+                                                byte[] responseBytes = sb.toString().getBytes(StandardCharsets.UTF_8);
                                                 exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-                                                exchange.getResponseHeaders().add("Location", "http://localhost:8555/local-hls/playlist.m3u8");
-                                                exchange.sendResponseHeaders(302, -1);
+                                                exchange.getResponseHeaders().add("Content-Type", "application/vnd.apple.mpegurl");
+                                                exchange.sendResponseHeaders(200, responseBytes.length);
+                                                try (OutputStream os = exchange.getResponseBody()) {
+                                                    os.write(responseBytes);
+                                                }
                                                 return;
                                             } else {
                                                 System.err.println("[HLS Proxy] Timeout de transmuxage fMP4.");
