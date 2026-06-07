@@ -15,6 +15,7 @@ import javafx.scene.Cursor;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.*;
@@ -24,6 +25,14 @@ import javafx.scene.media.MediaView;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+
+// Moteur de lecture VLC (libVLC via vlcj). Les types dont le nom court entre en
+// collision avec javafx (MediaPlayer) sont référencés en chemin complet dans le code.
+import uk.co.caprica.vlcj.factory.MediaPlayerFactory;
+import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery;
+import uk.co.caprica.vlcj.player.embedded.EmbeddedMediaPlayer;
+import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
+import uk.co.caprica.vlcj.javafx.videosurface.ImageViewVideoSurface;
 
 import java.io.File;
 import java.util.List;
@@ -88,6 +97,15 @@ public class App extends Application {
     private Stage activePlayerStage;
     private volatile boolean playerActive = false;
 
+    // Moteur de lecture sélectionné ("javafx" ou "vlc") + état du moteur VLC.
+    private String playerEngine = "vlc";
+    private boolean vlcFallbackNotified = false; // alerte de repli affichée au plus une fois/session
+    private Boolean vlcAvailable; // mémoïsé : null = pas encore testé
+    private MediaPlayerFactory vlcFactory;
+    private EmbeddedMediaPlayer vlcPlayer;
+    // Source brute en cours de lecture, indépendante du moteur (pour le test "déjà ouvert").
+    private String currentPlayingSource;
+
     // Transmuxing local HLS
     private java.io.File tempHlsDir;
     private Process activeTransmuxProcess;
@@ -105,6 +123,8 @@ public class App extends Application {
         this.primaryStage = stage;
         // Chargement des chemins FFmpeg
         initFFmpegPaths();
+        // Moteur de lecture choisi par l'utilisateur (VLC par défaut, repli JavaFX si absent).
+        playerEngine = prefs.get("playerEngine", "vlc");
         
         runner = new FFmpegRunner(ffmpegPath, ffprobePath);
         queue = new JobQueueService(runner);
@@ -556,6 +576,70 @@ public class App extends Application {
         }
     }
 
+    /**
+     * Recherche le runtime VLC (libVLC) embarqué à côté de l'application.
+     *
+     * Sur le modèle de {@link #findBundledBinaries()} : le CI copie le runtime VLC
+     * (libvlc + libvlccore + dossier {@code plugins/}) dans le dossier {@code vlc/}
+     * de l'image jpackage, à côté du JAR. On localise le répertoire contenant la
+     * bibliothèque native principale ({@code libvlc.dll} / {@code .dylib} / {@code .so}).
+     *
+     * @return le dossier contenant libvlc, ou {@code null} si aucun runtime embarqué
+     *         (ex : lancement en dev → repli sur une installation VLC système).
+     */
+    private File findBundledVlc() {
+        try {
+            File codeSource = new File(
+                    App.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            File baseDir = codeSource.isDirectory() ? codeSource : codeSource.getParentFile();
+            if (baseDir == null) return null;
+
+            String os = System.getProperty("os.name").toLowerCase();
+            String libName = os.contains("win") ? "libvlc.dll"
+                    : os.contains("mac") ? "libvlc.dylib" : "libvlc.so";
+
+            File[] candidateDirs = {
+                    new File(baseDir, "vlc"),
+                    baseDir
+            };
+            for (File dir : candidateDirs) {
+                if (new File(dir, libName).isFile()) {
+                    return dir;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[VLC] Détection du runtime VLC embarqué impossible : " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Vérifie (une seule fois, résultat mémoïsé) qu'une bibliothèque libVLC est
+     * chargeable. Priorité au runtime embarqué (dossier {@code vlc/}), repli sur
+     * une installation VLC système via {@link NativeDiscovery}.
+     */
+    private boolean isVlcAvailable() {
+        if (vlcAvailable != null) return vlcAvailable;
+        try {
+            File bundled = findBundledVlc();
+            if (bundled != null) {
+                // La stratégie de découverte vlcj qui inspecte "jna.library.path"
+                // trouvera le runtime embarqué ; les plugins co-localisés (dossier
+                // plugins/) sont résolus automatiquement par libVLC.
+                System.setProperty("jna.library.path", bundled.getAbsolutePath());
+                com.sun.jna.NativeLibrary.addSearchPath("libvlc", bundled.getAbsolutePath());
+            }
+            vlcAvailable = new NativeDiscovery().discover();
+            if (!vlcAvailable) {
+                System.err.println("[VLC] Aucune bibliothèque libVLC trouvée (embarquée ou système).");
+            }
+        } catch (Throwable t) {
+            System.err.println("[VLC] Indisponible : " + t.getMessage());
+            vlcAvailable = false;
+        }
+        return vlcAvailable;
+    }
+
     private String sanitizePath(String path) {
         if (path == null) return "";
         path = path.trim();
@@ -701,21 +785,46 @@ public class App extends Application {
         grid.add(ffprobeField, 1, 1);
         grid.add(browseFp, 2, 1);
 
+        // Sélection du moteur de lecture (JavaFX natif vs VLC).
+        final String ENGINE_JAVAFX = "JavaFX (natif)";
+        final String ENGINE_VLC = "VLC (formats variés : HLS, MKV, HEVC…)";
+        ComboBox<String> playerEngineBox = new ComboBox<>();
+        playerEngineBox.getItems().addAll(ENGINE_JAVAFX, ENGINE_VLC);
+        playerEngineBox.setValue("vlc".equals(playerEngine) ? ENGINE_VLC : ENGINE_JAVAFX);
+        playerEngineBox.setPrefWidth(300);
+
+        Label vlcStatusLabel = new Label();
+        boolean vlcOk = isVlcAvailable();
+        if (vlcOk) {
+            vlcStatusLabel.setText("✓ VLC détecté");
+            vlcStatusLabel.getStyleClass().addAll("label", "ffmpeg-ok");
+        } else {
+            vlcStatusLabel.setText("⚠ VLC non détecté (repli sur JavaFX)");
+            vlcStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
+        }
+
+        grid.add(new Label("Lecteur vidéo :"), 0, 2);
+        grid.add(playerEngineBox, 1, 2);
+        grid.add(vlcStatusLabel, 2, 2);
+
         dialog.getDialogPane().setContent(grid);
 
         dialog.showAndWait().ifPresent(response -> {
             if (response == saveButtonType) {
                 String ff = sanitizePath(ffmpegField.getText());
                 String fp = sanitizePath(ffprobeField.getText());
-                
+
                 ffmpegPath = ff;
                 ffprobePath = fp;
                 prefs.put("ffmpegPath", ff);
                 prefs.put("ffprobePath", fp);
-                
+
                 runner.setFfmpegPath(ff);
                 runner.setFfprobePath(fp);
-                
+
+                playerEngine = ENGINE_VLC.equals(playerEngineBox.getValue()) ? "vlc" : "javafx";
+                prefs.put("playerEngine", playerEngine);
+
                 updateFFmpegStatusUI();
                 updatePreview();
             }
@@ -806,7 +915,10 @@ public class App extends Application {
         } else {
             String url = urlField.getText().trim();
             if (url.isEmpty()) return null;
-            
+            // Décoder d'éventuelles entités HTML (&amp;, &#x3D;) restées dans une URL
+            // collée ou détectée, sinon le flux est injouable et intéléchargeable.
+            url = org.jsoup.parser.Parser.unescapeEntities(url, false);
+
             // Si c'est un flux Twitter/X de type variante HLS, on tente de reconstruire le master playlist
             // pour récupérer le son
             if (url.contains("video.twimg.com")) {
@@ -896,39 +1008,47 @@ public class App extends Application {
         playMedia(source, parentStage);
     }
 
-    private void playMedia(String source, Stage parentStage) {
-        String requestedUrl = source;
-        if (!source.startsWith("http://") && !source.startsWith("https://")) {
-            requestedUrl = new File(source).toURI().toString();
-        }
-
-        // 1. Détecter si la vidéo est déjà en cours de lecture
-        if (mediaPlayer != null && activePlayerStage != null) {
-            String currentSource = mediaPlayer.getMedia().getSource();
-            boolean isSame = isSameBaseUrl(currentSource, requestedUrl);
-
-            try {
-                String encUrl = java.net.URLEncoder.encode(source, "UTF-8");
-                if (currentSource.contains(encUrl)) {
-                    isSame = true;
+    private void playMedia(String source, Stage parentStage) {
+        // 1. Détecter si la même source est déjà en cours de lecture (tous moteurs confondus)
+        if (activePlayerStage != null && currentPlayingSource != null
+                && isSameBaseUrl(currentPlayingSource, source)) {
+            Platform.runLater(() -> {
+                if (activePlayerStage != null) {
+                    activePlayerStage.show();
+                    activePlayerStage.toFront();
+                    activePlayerStage.setIconified(false);
                 }
-            } catch (Exception ignore) {}
-            
-            if (isSame) {
-                Platform.runLater(() -> {
-                    if (activePlayerStage != null) {
-                        activePlayerStage.show();
-                        activePlayerStage.toFront();
-                        activePlayerStage.setIconified(false);
-                    }
-                });
-                System.out.println("[PLAY] Le flux ou la vidéo est déjà en cours de lecture. Fenêtre ramenée au premier plan.");
-                return;
-            }
+            });
+            System.out.println("[PLAY] Le flux ou la vidéo est déjà en cours de lecture. Fenêtre ramenée au premier plan.");
+            return;
         }
 
         disposeMediaPlayer();
         playerActive = true;
+        currentPlayingSource = source;
+
+        // 2. Moteur VLC : lit la source brute directement (bypass du proxy/transmux).
+        if ("vlc".equals(playerEngine)) {
+            if (isVlcAvailable()) {
+                openVlcPlayerStage(source, parentStage);
+                return;
+            }
+            // VLC indisponible → repli silencieux sur JavaFX, en informant une seule fois par session.
+            if (!vlcFallbackNotified) {
+                vlcFallbackNotified = true;
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.WARNING);
+                    alert.setTitle("Lecteur VLC indisponible");
+                    alert.setHeaderText("VLC n'a pas été trouvé sur ce système.");
+                    alert.setContentText("La lecture utilise le lecteur JavaFX natif à la place.\n"
+                            + "Installez VLC ou utilisez une version embarquée pour activer ce moteur.");
+                    styleDialog(alert, parentStage);
+                    alert.showAndWait();
+                });
+            }
+        }
+
+        // 3. Moteur JavaFX : passage par le proxy localhost (codecs limités à H.264/AAC).
         if (source.startsWith("http://") || source.startsWith("https://")) {
             try {
                 String mediaUrl;
@@ -1297,6 +1417,312 @@ public class App extends Application {
             alert.setContentText(ex.getMessage());
             styleDialog(alert, parentStage);
             alert.showAndWait();
+        }
+    }
+
+    /**
+     * Ouvre la fenêtre du lecteur en s'appuyant sur le moteur VLC (libVLC via vlcj).
+     *
+     * Contrairement au lecteur JavaFX, VLC lit la {@code source} brute directement
+     * (fichier local ou URL réseau) sans passer par le proxy/transmux localhost,
+     * car libVLC décode nativement HLS, fMP4, MKV, HEVC, etc.
+     */
+    private void openVlcPlayerStage(String source, Stage parentStage) {
+        try {
+            if (vlcFactory == null) {
+                vlcFactory = new MediaPlayerFactory();
+            }
+            vlcPlayer = vlcFactory.mediaPlayers().newEmbeddedMediaPlayer();
+            final EmbeddedMediaPlayer vp = vlcPlayer;
+
+            // Surface vidéo : rendu par callback dans un ImageView JavaFX.
+            ImageView mediaView = new ImageView();
+            mediaView.setPreserveRatio(true);
+            vp.videoSurface().set(new ImageViewVideoSurface(mediaView));
+
+            Stage playerStage = new Stage();
+            activePlayerStage = playerStage;
+            playerStage.initOwner(parentStage);
+            playerStage.setTitle("Lecteur VLC - FFmpeg Studio 🎥");
+            try {
+                playerStage.getIcons().add(new javafx.scene.image.Image(getClass().getResourceAsStream("/icon.png")));
+            } catch (Exception e) {
+                // Ignorer
+            }
+            playerStage.setResizable(true);
+            playerStage.setMinWidth(550);
+            playerStage.setMinHeight(300);
+
+            StackPane videoPane = new StackPane(mediaView);
+            videoPane.setStyle("-fx-background-color: #000000;");
+            videoPane.setMinSize(0, 0);
+            videoPane.setOnMouseClicked(e -> {
+                if (e.getClickCount() == 2) {
+                    playerStage.setFullScreen(!playerStage.isFullScreen());
+                }
+            });
+            mediaView.fitWidthProperty().bind(videoPane.widthProperty());
+            mediaView.fitHeightProperty().bind(videoPane.heightProperty());
+
+            // Barre de contrôles flottante (identique au lecteur JavaFX)
+            HBox controls = new HBox(12);
+            controls.setAlignment(Pos.CENTER);
+            controls.setPadding(new Insets(10, 15, 10, 15));
+            controls.setStyle("-fx-background-color: rgba(26, 26, 36, 0.85); -fx-border-color: #2b2b36; -fx-border-width: 1px; -fx-background-radius: 8px; -fx-border-radius: 8px;");
+            controls.setMinHeight(HBox.USE_PREF_SIZE);
+            controls.setMaxHeight(HBox.USE_PREF_SIZE);
+
+            Button playPauseBtn = new Button("⏸");
+            playPauseBtn.getStyleClass().add("btn-secondary");
+            playPauseBtn.setOnAction(e -> {
+                if (vp.status().isPlaying()) {
+                    vp.controls().pause();
+                    playPauseBtn.setText("▶");
+                } else {
+                    vp.controls().play();
+                    playPauseBtn.setText("⏸");
+                }
+            });
+
+            Label timeLabel = new Label("00:00 / 00:00");
+            timeLabel.setStyle("-fx-text-fill: #e1e1e6; -fx-font-family: monospace;");
+
+            Slider timeSlider = new Slider();
+            HBox.setHgrow(timeSlider, Priority.ALWAYS);
+            timeSlider.getStyleClass().add("slider");
+            timeSlider.setMin(0);
+
+            Label volLabel = new Label("🔊");
+            Slider volSlider = new Slider(0, 1, 0.5);
+            volSlider.setPrefWidth(80);
+            volSlider.getStyleClass().add("slider");
+            volSlider.valueProperty().addListener((o, a, b) -> {
+                vp.audio().setVolume((int) Math.round(b.doubleValue() * 100));
+                volLabel.setText(b.doubleValue() == 0 ? "🔇" : "🔊");
+            });
+
+            Button fsBtn = new Button("⛶");
+            fsBtn.getStyleClass().add("btn-secondary");
+            fsBtn.setOnAction(e -> playerStage.setFullScreen(!playerStage.isFullScreen()));
+
+            controls.getChildren().addAll(playPauseBtn, timeSlider, timeLabel, volLabel, volSlider, fsBtn);
+
+            // Suivi de la durée totale (en ms) pour gérer live vs durée connue.
+            final long[] totalMs = { -1 };
+
+            // Recherche (Seek) : on met en pause pendant le glissement.
+            timeSlider.setOnMousePressed(e -> vp.controls().setPause(true));
+            timeSlider.setOnMouseReleased(e -> {
+                vp.controls().setTime((long) (timeSlider.getValue() * 1000));
+                if (playPauseBtn.getText().equals("⏸")) {
+                    vp.controls().setPause(false);
+                }
+            });
+            timeSlider.setOnMouseClicked(e -> vp.controls().setTime((long) (timeSlider.getValue() * 1000)));
+
+            StackPane playerLayout = new StackPane();
+            playerLayout.getChildren().addAll(videoPane, controls);
+            StackPane.setAlignment(controls, Pos.BOTTOM_CENTER);
+            StackPane.setMargin(controls, new Insets(0, 15, 15, 15));
+
+            Scene scene = new Scene(playerLayout, 640, 420);
+            scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+
+            // Animations d'auto-masquage des contrôles (identiques au lecteur JavaFX)
+            PauseTransition idleTimeout = new PauseTransition(Duration.seconds(2.5));
+            FadeTransition fadeOut = new FadeTransition(Duration.millis(350), controls);
+            fadeOut.setFromValue(1.0);
+            fadeOut.setToValue(0.0);
+            fadeOut.setOnFinished(evt -> {
+                controls.setVisible(false);
+                scene.setCursor(Cursor.NONE);
+            });
+            FadeTransition fadeIn = new FadeTransition(Duration.millis(250), controls);
+            fadeIn.setToValue(1.0);
+
+            Runnable showControls = () -> {
+                if (fadeOut.getStatus() == Animation.Status.RUNNING) {
+                    fadeOut.stop();
+                }
+                if (!controls.isVisible() || controls.getOpacity() < 1.0) {
+                    controls.setVisible(true);
+                    fadeIn.setFromValue(controls.getOpacity());
+                    fadeIn.playFromStart();
+                }
+                scene.setCursor(Cursor.DEFAULT);
+            };
+            Runnable hideControls = () -> {
+                if (vp.status().isPlaying() && !controls.isHover()) {
+                    if (fadeIn.getStatus() == Animation.Status.RUNNING) {
+                        fadeIn.stop();
+                    }
+                    fadeOut.setFromValue(controls.getOpacity());
+                    fadeOut.playFromStart();
+                } else if (controls.isHover() && vp.status().isPlaying()) {
+                    idleTimeout.playFromStart();
+                }
+            };
+            idleTimeout.setOnFinished(evt -> hideControls.run());
+
+            playerLayout.setOnMouseMoved(e -> {
+                showControls.run();
+                if (vp.status().isPlaying()) idleTimeout.playFromStart(); else idleTimeout.stop();
+            });
+            playerLayout.setOnMouseDragged(e -> {
+                showControls.run();
+                if (vp.status().isPlaying()) idleTimeout.playFromStart(); else idleTimeout.stop();
+            });
+            playerLayout.setOnMouseExited(e -> {
+                if (vp.status().isPlaying()) hideControls.run();
+            });
+
+            scene.setOnKeyPressed(keyEvent -> {
+                switch (keyEvent.getCode()) {
+                    case SPACE -> playPauseBtn.fire();
+                    case M -> {
+                        vp.audio().setMute(!vp.audio().isMute());
+                        volLabel.setText(vp.audio().isMute() ? "🔇" : "🔊");
+                    }
+                    case F -> fsBtn.fire();
+                    default -> {}
+                }
+            });
+
+            // Événements vlcj : arrivent sur des threads natifs → Platform.runLater obligatoire.
+            vp.events().addMediaPlayerEventListener(new MediaPlayerEventAdapter() {
+                @Override
+                public void mediaPlayerReady(uk.co.caprica.vlcj.player.base.MediaPlayer mp) {
+                    Platform.runLater(() -> vp.audio().setVolume((int) Math.round(volSlider.getValue() * 100)));
+                }
+                @Override
+                public void lengthChanged(uk.co.caprica.vlcj.player.base.MediaPlayer mp, long newLength) {
+                    totalMs[0] = newLength;
+                    Platform.runLater(() -> {
+                        if (newLength > 0) {
+                            timeSlider.setMax(newLength / 1000.0);
+                            timeSlider.setDisable(false);
+                        } else {
+                            timeSlider.setDisable(true);
+                            timeLabel.setText("Direct / Live");
+                        }
+                    });
+                }
+                @Override
+                public void timeChanged(uk.co.caprica.vlcj.player.base.MediaPlayer mp, long newTime) {
+                    Platform.runLater(() -> {
+                        if (!timeSlider.isPressed() && !timeSlider.isValueChanging()) {
+                            timeSlider.setValue(newTime / 1000.0);
+                        }
+                        Duration total = totalMs[0] > 0 ? Duration.millis(totalMs[0]) : Duration.UNKNOWN;
+                        updateTimeLabel(timeLabel, Duration.millis(newTime), total);
+                    });
+                }
+                @Override
+                public void videoOutput(uk.co.caprica.vlcj.player.base.MediaPlayer mp, int newCount) {
+                    java.awt.Dimension dim = vp.video().videoDimension();
+                    if (dim == null) return;
+                    Platform.runLater(() -> {
+                        double mediaW = dim.getWidth();
+                        double mediaH = dim.getHeight();
+                        double targetW = 854, targetH = 480;
+                        if (mediaW > 0 && mediaH > 0) {
+                            double ratio = mediaW / mediaH;
+                            if (mediaW > 960 || mediaH > 540) {
+                                if (ratio > 960.0 / 540.0) { targetW = 960; targetH = 960 / ratio; }
+                                else { targetH = 540; targetW = 540 * ratio; }
+                            } else {
+                                targetW = Math.max(640, mediaW);
+                                targetH = Math.max(360, mediaH);
+                            }
+                        }
+                        playerStage.setWidth(targetW);
+                        playerStage.setHeight(targetH + 90);
+                    });
+                }
+                @Override
+                public void playing(uk.co.caprica.vlcj.player.base.MediaPlayer mp) {
+                    Platform.runLater(() -> { playPauseBtn.setText("⏸"); idleTimeout.playFromStart(); });
+                }
+                @Override
+                public void paused(uk.co.caprica.vlcj.player.base.MediaPlayer mp) {
+                    Platform.runLater(() -> { playPauseBtn.setText("▶"); idleTimeout.stop(); showControls.run(); });
+                }
+                @Override
+                public void finished(uk.co.caprica.vlcj.player.base.MediaPlayer mp) {
+                    Platform.runLater(() -> { playPauseBtn.setText("▶"); showControls.run(); });
+                }
+                @Override
+                public void error(uk.co.caprica.vlcj.player.base.MediaPlayer mp) {
+                    System.err.println("[ERROR] Erreur du lecteur VLC pour : " + source);
+                    Platform.runLater(() -> {
+                        String originalUrl = (source.startsWith("http://") || source.startsWith("https://")) ? source : null;
+                        if (originalUrl != null) {
+                            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                            alert.setTitle("Erreur de Lecture");
+                            alert.setHeaderText("Lecture VLC impossible");
+                            alert.setContentText("Ce flux vidéo n'a pas pu être lu par VLC.\n\nVoulez-vous le télécharger à la place ?");
+                            styleDialog(alert, playerStage);
+                            ButtonType downloadBtnType = new ButtonType("Télécharger", ButtonBar.ButtonData.OK_DONE);
+                            ButtonType cancelBtnType = new ButtonType("Annuler", ButtonBar.ButtonData.CANCEL_CLOSE);
+                            alert.getButtonTypes().setAll(downloadBtnType, cancelBtnType);
+                            alert.showAndWait().ifPresent(response -> {
+                                if (response == downloadBtnType) {
+                                    urlSourceRadio.setSelected(true);
+                                    urlField.setText(originalUrl);
+                                    presetBox.getSelectionModel().select(Preset.DOWNLOAD_STREAM);
+                                    if (primaryStage != null) {
+                                        primaryStage.show();
+                                        primaryStage.toFront();
+                                        primaryStage.setIconified(false);
+                                    }
+                                }
+                            });
+                        } else {
+                            Alert alert = new Alert(Alert.AlertType.ERROR);
+                            alert.setTitle("Erreur de Lecture");
+                            alert.setHeaderText("Impossible de lire ce média avec VLC.");
+                            alert.setContentText("Assurez-vous que le fichier ou le flux est valide et accessible.");
+                            styleDialog(alert, playerStage);
+                            alert.showAndWait();
+                        }
+                        playerStage.close();
+                    });
+                }
+            });
+
+            playerStage.setScene(scene);
+            playerStage.setOnCloseRequest(e -> {
+                idleTimeout.stop();
+                fadeOut.stop();
+                fadeIn.stop();
+                activePlayerStage = null;
+                disposeMediaPlayer();
+            });
+
+            playerStage.show();
+
+            // Démarrage de la lecture (URL réseau → on reproduit le user-agent du proxy).
+            boolean isNetwork = source.startsWith("http://") || source.startsWith("https://");
+            String mrl = isNetwork ? source : new File(source).getAbsolutePath();
+            if (isNetwork) {
+                vp.media().play(mrl,
+                        ":http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            } else {
+                vp.media().play(mrl);
+            }
+
+        } catch (Throwable ex) {
+            System.err.println("[VLC] Échec d'initialisation du lecteur VLC : " + ex.getMessage());
+            ex.printStackTrace(System.err);
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Erreur");
+                alert.setHeaderText("Impossible d'initialiser le lecteur VLC.");
+                alert.setContentText(String.valueOf(ex.getMessage()));
+                styleDialog(alert, parentStage);
+                alert.showAndWait();
+            });
+            disposeMediaPlayer();
         }
     }
 
@@ -2268,25 +2694,41 @@ public class App extends Application {
                                             }
                                         }
                                         if (bestVariantUrl != null) {
-                                            System.out.println("[HLS Proxy] Master playlist détectée. Redirection vers la meilleure variante : " + bestVariantUrl);
-                                            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-                                            exchange.getResponseHeaders().add("Location", "http://localhost:8555/proxy-m3u8/playlist.m3u8?url=" + java.net.URLEncoder.encode(bestVariantUrl, "UTF-8"));
-                                            exchange.sendResponseHeaders(302, -1);
-                                            return;
+                                            if (checkUrlIsFmp4(bestVariantUrl)) {
+                                                System.out.println("[HLS Proxy] Master playlist avec variante fMP4 détectée. Lancement du transmuxeur local sur le Master HLS...");
+                                                isFmp4 = true;
+                                                targetUrl = currentUrl;
+                                            } else {
+                                                System.out.println("[HLS Proxy] Master playlist détectée. Redirection vers la meilleure variante : " + bestVariantUrl);
+                                                exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                                                exchange.getResponseHeaders().add("Location", "http://localhost:8555/proxy-m3u8/playlist.m3u8?url=" + java.net.URLEncoder.encode(bestVariantUrl, "UTF-8"));
+                                                exchange.sendResponseHeaders(302, -1);
+                                                return;
+                                            }
                                         }
                                     }
 
                                     if (isFmp4) {
                                         System.out.println("[HLS Proxy] Fragmented MP4 détecté. Redirection vers le transmuxeur local...");
+                                        String transmuxSource = targetUrl;
+                                        if (targetUrl.contains("video.twimg.com")) {
+                                            java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                                                    "(https://video\\.twimg\\.com/(?:ext_tw_video|amplify_video)/[^/]+/(?:pu/pl|vid)/)avc1/[^/]+/([^/]+\\.m3u8)");
+                                            java.util.regex.Matcher m = p.matcher(targetUrl);
+                                            if (m.find()) {
+                                                transmuxSource = m.group(1) + m.group(2);
+                                                System.out.println("[HLS Proxy] Reconstruction du Master Playlist pour le transmuxeur : " + transmuxSource);
+                                            }
+                                        }
                                         boolean alreadyRunning = false;
                                         synchronized (App.this) {
-                                            if (activeTransmuxUrl != null && activeTransmuxUrl.equals(targetUrl)) {
+                                            if (activeTransmuxUrl != null && activeTransmuxUrl.equals(transmuxSource)) {
                                                 alreadyRunning = true;
                                             }
                                         }
                                         
                                         if (!alreadyRunning) {
-                                            startHlsTransmux(targetUrl);
+                                            startHlsTransmux(transmuxSource);
                                         } else {
                                             System.out.println("[HLS Proxy] Le transmuxage de cette URL est déjà en cours d'exécution ou terminé.");
                                         }
@@ -2300,7 +2742,7 @@ public class App extends Application {
                                         
                                         if (playlistFile != null) {
                                             int waitCount = 0;
-                                            while ((!playlistFile.exists() || playlistFile.length() == 0) && waitCount < 100) {
+                                            while ((!playlistFile.exists() || playlistFile.length() == 0) && waitCount < 300) {
                                                 try {
                                                     Thread.sleep(50);
                                                 } catch (InterruptedException ie) {
@@ -2496,6 +2938,59 @@ public class App extends Application {
         }
     }
 
+    private boolean checkUrlIsFmp4(String targetUrl) {
+        java.net.HttpURLConnection conn = null;
+        try {
+            String currentUrl = targetUrl;
+            int redirectCount = 0;
+            while (redirectCount < 5) {
+                java.net.URL urlObj = new java.net.URL(currentUrl);
+                conn = (java.net.HttpURLConnection) urlObj.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setInstanceFollowRedirects(false);
+                
+                int status = conn.getResponseCode();
+                if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                    String loc = conn.getHeaderField("Location");
+                    if (loc != null) {
+                        currentUrl = resolveUrl(loc, currentUrl, currentUrl);
+                        redirectCount++;
+                        conn.disconnect();
+                        continue;
+                    }
+                }
+                break;
+            }
+            
+            if (conn.getResponseCode() == 200) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String trimmed = line.trim();
+                        if (trimmed.startsWith("#EXT-X-MAP")) {
+                            return true;
+                        }
+                        if (!trimmed.startsWith("#") && !trimmed.isEmpty()) {
+                            if (trimmed.contains(".m4s") || trimmed.contains(".mp4") || trimmed.endsWith(".m4s") || trimmed.endsWith(".mp4")) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[Proxy] Erreur lors de la vérification fMP4 de " + targetUrl + " : " + e.getMessage());
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+        return false;
+    }
+
     private String extractOriginalUrl(String mediaUrl) {
         if (mediaUrl == null) return null;
         try {
@@ -2659,6 +3154,27 @@ public class App extends Application {
 
     private void disposeMediaPlayer() {
         playerActive = false;
+        currentPlayingSource = null;
+
+        // Libération du moteur VLC (release hors thread JavaFX, recommandé par vlcj).
+        final EmbeddedMediaPlayer oldVlc = vlcPlayer;
+        final MediaPlayerFactory oldFactory = vlcFactory;
+        if (oldVlc != null) {
+            vlcPlayer = null;
+            vlcFactory = null;
+            new Thread(() -> {
+                try {
+                    oldVlc.controls().stop();
+                    oldVlc.release();
+                    if (oldFactory != null) {
+                        oldFactory.release();
+                    }
+                } catch (Exception ex) {
+                    // Ignore
+                }
+            }, "vlc-dispose").start();
+        }
+
         final MediaPlayer oldPlayer = mediaPlayer;
         if (oldPlayer != null) {
             mediaPlayer = null;
