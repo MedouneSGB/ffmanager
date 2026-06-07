@@ -87,10 +87,11 @@ public class App extends Application {
     private Stage primaryStage;
     private Stage activePlayerStage;
 
-    // Transmuxing local HLS
+    // Transmuxing local HLS / MP4
     private java.io.File tempHlsDir;
+    private java.io.File tempPlayFile;
     private Process activeTransmuxProcess;
-    private javafx.concurrent.Task<String> activePrepTask;
+    private javafx.concurrent.Task<?> activePrepTask;
     private String activePrepUrl;
 
     @Override
@@ -803,7 +804,21 @@ public class App extends Application {
             return selectedFile == null ? null : selectedFile.getAbsolutePath();
         } else {
             String url = urlField.getText().trim();
-            return url.isEmpty() ? null : url;
+            if (url.isEmpty()) return null;
+            
+            // Si c'est un flux Twitter/X de type variante HLS, on tente de reconstruire le master playlist
+            // pour récupérer le son
+            if (url.contains("video.twimg.com")) {
+                java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                        "(https://video\\.twimg\\.com/(?:ext_tw_video|amplify_video)/[^/]+/(?:pu/pl|vid)/)avc1/[^/]+/([^/]+\\.m3u8)");
+                java.util.regex.Matcher m = p.matcher(url);
+                if (m.find()) {
+                    String masterUrl = m.group(1) + m.group(2);
+                    System.out.println("[URL] Substitution automatique de l'URL variante Twitter par son Master Playlist : " + masterUrl);
+                    return masterUrl;
+                }
+            }
+            return url;
         }
     }
 
@@ -912,118 +927,108 @@ public class App extends Application {
 
         cleanupTransmux();
         if (source.startsWith("http://") || source.startsWith("https://")) {
-            if (source.contains(".m3u8")) {
-                Alert loadingAlert = new Alert(Alert.AlertType.INFORMATION);
-                loadingAlert.setTitle("Préparation du flux");
-                loadingAlert.setHeaderText("Connexion et préparation du flux vidéo...");
-                loadingAlert.setContentText("Veuillez patienter pendant que FFmpeg initialise la lecture locale...");
-                styleDialog(loadingAlert, parentStage);
-                
-                ProgressBar pbIndicator = new ProgressBar(-1);
-                pbIndicator.setMaxWidth(Double.MAX_VALUE);
-                VBox contentBox = new VBox(10, new Label("Analyse et conversion des segments..."), pbIndicator);
-                contentBox.setPadding(new Insets(10));
-                loadingAlert.getDialogPane().setContent(contentBox);
-                
-                javafx.concurrent.Task<String> prepTask = new javafx.concurrent.Task<>() {
-                    @Override
-                    protected String call() throws Exception {
-                        cleanupTransmux();
-                        
-                        tempHlsDir = java.nio.file.Files.createTempDirectory("ffmpeg-studio-hls").toFile();
-                        File playlistFile = new File(tempHlsDir, "playlist.m3u8");
-                        File firstSegFile = new File(tempHlsDir, "seg_000.ts");
-                        
-                        List<String> cmd = new java.util.ArrayList<>();
-                        cmd.add(ffmpegPath);
-                        cmd.add("-y");
-                        cmd.add("-i");
-                        cmd.add(source);
-                        cmd.add("-c");
-                        cmd.add("copy");
-                        cmd.add("-f");
-                        cmd.add("hls");
-                        cmd.add("-hls_time");
-                        cmd.add("3");
-                        cmd.add("-hls_list_size");
-                        cmd.add("0");
-                        cmd.add("-hls_segment_filename");
-                        cmd.add(new File(tempHlsDir, "seg_%03d.ts").getAbsolutePath());
-                        cmd.add(playlistFile.getAbsolutePath());
-                        
-                        System.out.println("[Transmux] Lancement de la commande : " + String.join(" ", cmd));
-                        ProcessBuilder pb = new ProcessBuilder(cmd);
-                        pb.redirectErrorStream(true);
-                        pb.redirectOutput(ProcessBuilder.Redirect.to(new File(tempHlsDir, "transmux.log")));
-                        
-                        activeTransmuxProcess = pb.start();
-                        
-                        long start = System.currentTimeMillis();
-                        while (System.currentTimeMillis() - start < 10000) { // 10s timeout
-                            if (playlistFile.exists() && firstSegFile.exists()) {
-                                Thread.sleep(200); // laisser le temps d'écrire
-                                return "http://localhost:8555/local-hls/playlist.m3u8";
-                            }
-                            if (!activeTransmuxProcess.isAlive()) {
-                                int exit = activeTransmuxProcess.exitValue();
-                                if (exit == 0 && playlistFile.exists() && firstSegFile.exists()) {
-                                    return "http://localhost:8555/local-hls/playlist.m3u8";
-                                }
-                                throw new RuntimeException("FFmpeg s'est arrêté prématurément (Code " + exit + ").");
-                            }
-                            Thread.sleep(150);
+            Alert loadingAlert = new Alert(Alert.AlertType.INFORMATION);
+            loadingAlert.setTitle("Préparation de la lecture");
+            loadingAlert.setHeaderText("Connexion et préparation du flux vidéo...");
+            loadingAlert.setContentText("Veuillez patienter pendant le chargement de la vidéo...");
+            styleDialog(loadingAlert, parentStage);
+            
+            ProgressBar pbIndicator = new ProgressBar(0);
+            pbIndicator.setMaxWidth(Double.MAX_VALUE);
+            Label statusLabel = new Label("Initialisation...");
+            VBox contentBox = new VBox(10, statusLabel, pbIndicator);
+            contentBox.setPadding(new Insets(10));
+            loadingAlert.getDialogPane().setContent(contentBox);
+            
+            javafx.concurrent.Task<File> prepTask = new javafx.concurrent.Task<>() {
+                @Override
+                protected File call() throws Exception {
+                    tempPlayFile = File.createTempFile("ffmpeg-studio-play", ".mp4");
+                    tempPlayFile.deleteOnExit();
+                    
+                    // Si c'est un flux Twitter/X de type variante HLS, on tente de reconstruire le master playlist
+                    // pour récupérer le son
+                    String targetSource = source;
+                    if (source.contains("video.twimg.com")) {
+                        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                                "(https://video\\.twimg\\.com/(?:ext_tw_video|amplify_video)/[^/]+/(?:pu/pl|vid)/)avc1/[^/]+/([^/]+\\.m3u8)");
+                        java.util.regex.Matcher m = p.matcher(source);
+                        if (m.find()) {
+                            targetSource = m.group(1) + m.group(2);
+                            System.out.println("[PLAY] Substitution automatique de l'URL Twitter par son Master Playlist : " + targetSource);
                         }
-                        throw new RuntimeException("Délai d'attente de 10 secondes dépassé pour la génération du flux local.");
                     }
-                };
-                
-                prepTask.setOnSucceeded(evt -> {
-                    loadingAlert.close();
-                    if (activePrepTask != prepTask) return;
-                    activePrepUrl = null;
-                    activePrepTask = null;
-                    String localUrl = prepTask.getValue();
-                    openMediaPlayerStage(localUrl, parentStage, true);
-                });
-                
-                prepTask.setOnFailed(evt -> {
-                    loadingAlert.close();
-                    if (activePrepTask != prepTask) return;
-                    activePrepUrl = null;
-                    activePrepTask = null;
-                    Throwable ex = prepTask.getException();
-                    cleanupTransmux();
-                    Alert alert = new Alert(Alert.AlertType.ERROR);
-                    alert.setTitle("Erreur de Lecture");
-                    alert.setHeaderText("Impossible d'ouvrir ce flux vidéo.");
-                    alert.setContentText("FFmpeg n'a pas pu initialiser la lecture locale.\n\nDétail : " + (ex != null ? ex.getMessage() : "Inconnu"));
-                    styleDialog(alert, parentStage);
-                    alert.showAndWait();
-                });
 
-                prepTask.setOnCancelled(evt -> {
-                    loadingAlert.close();
-                    if (activePrepTask == prepTask) {
-                        activePrepUrl = null;
-                        activePrepTask = null;
+                    FFmpegRunner runner = new FFmpegRunner(ffmpegPath, ffprobePath);
+                    Job dummyJob = new Job(targetSource, tempPlayFile, Preset.REMUX_MP4, "");
+                    
+                    int exitCode = runner.run(dummyJob, (frac, msg) -> {
+                        updateProgress(frac, 1.0);
+                        updateMessage("Téléchargement : " + msg);
+                    });
+                    
+                    if (exitCode != 0) {
+                        throw new java.io.IOException("FFmpeg a échoué avec le code " + exitCode);
                     }
-                });
-                
-                activePrepUrl = requestedUrl;
-                activePrepTask = prepTask;
-                new Thread(prepTask).start();
-                loadingAlert.show();
-                return;
-            }
+                    
+                    return tempPlayFile;
+                }
+            };
+            
+            pbIndicator.progressProperty().bind(prepTask.progressProperty());
+            statusLabel.textProperty().bind(prepTask.messageProperty());
+            
+            prepTask.setOnSucceeded(evt -> {
+                loadingAlert.close();
+                if (activePrepTask != prepTask) return;
+                activePrepUrl = null;
+                activePrepTask = null;
+                File localFile = prepTask.getValue();
+                openMediaPlayerStage(localFile.toURI().toString(), parentStage, true); // true = déclenchera cleanupTransmux() à la fermeture
+            });
+            
+            prepTask.setOnFailed(evt -> {
+                loadingAlert.close();
+                if (activePrepTask != prepTask) return;
+                activePrepUrl = null;
+                activePrepTask = null;
+                Throwable ex = prepTask.getException();
+                cleanupTransmux();
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Erreur de Lecture");
+                alert.setHeaderText("Impossible d'ouvrir ce flux vidéo.");
+                alert.setContentText("FFmpeg n'a pas pu télécharger ou préparer le flux.\n\nDétail : " + (ex != null ? ex.getMessage() : "Inconnu"));
+                styleDialog(alert, parentStage);
+                alert.showAndWait();
+            });
+            
+            prepTask.setOnCancelled(evt -> {
+                loadingAlert.close();
+                if (activePrepTask == prepTask) {
+                    activePrepUrl = null;
+                    activePrepTask = null;
+                }
+                cleanupTransmux();
+            });
+            
+            activePrepUrl = requestedUrl;
+            activePrepTask = prepTask;
+            
+            Thread th = new Thread(prepTask, "stream-prep-thread");
+            th.setDaemon(true);
+            th.start();
+            
+            loadingAlert.setOnCloseRequest(e -> {
+                prepTask.cancel(true);
+                cleanupTransmux();
+            });
+            
+            loadingAlert.show();
+            return;
         }
         
-        // Fichier local ou URL directe
-        String mediaUrl;
-        if (!source.startsWith("http://") && !source.startsWith("https://")) {
-            mediaUrl = new File(source).toURI().toString();
-        } else {
-            mediaUrl = source;
-        }
+        // Fichier local, on l'ouvre directement
+        String mediaUrl = new File(source).toURI().toString();
         openMediaPlayerStage(mediaUrl, parentStage, false);
     }
 
@@ -2441,6 +2446,11 @@ public class App extends Application {
             System.out.println("[Transmux] Nettoyage des fichiers temporaires dans " + tempHlsDir.getAbsolutePath());
             deleteDir(tempHlsDir);
             tempHlsDir = null;
+        }
+        if (tempPlayFile != null && tempPlayFile.exists()) {
+            System.out.println("[Play] Nettoyage du fichier de lecture temporaire : " + tempPlayFile.getAbsolutePath());
+            tempPlayFile.delete();
+            tempPlayFile = null;
         }
     }
 
