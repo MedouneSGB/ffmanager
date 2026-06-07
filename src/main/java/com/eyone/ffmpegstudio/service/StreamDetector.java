@@ -174,6 +174,10 @@ public class StreamDetector {
             String url = matcher.group();
             // Nettoyer les barres obliques échappées (\/) couramment trouvées dans les JSON
             url = url.replace("\\/", "/");
+            // Décoder les entités HTML (&amp; -> &, &#x3D; -> =) présentes quand l'URL
+            // apparaît dans un attribut/texte HTML : sinon l'URL est invalide pour
+            // le téléchargement, le sous-parsing m3u8 et la lecture (VLC/JavaFX).
+            url = org.jsoup.parser.Parser.unescapeEntities(url, false);
             results.add(url);
         }
     }

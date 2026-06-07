@@ -40,6 +40,18 @@
             <artifactId>jsoup</artifactId>
             <version>1.17.2</version>
         </dependency>
+        <!-- Lecteur VLC (libVLC) : moteur alternatif aux codecs natifs JavaFX -->
+        <dependency>
+            <groupId>uk.co.caprica</groupId>
+            <artifactId>vlcj</artifactId>
+            <version>4.8.2</version>
+        </dependency>
+        <!-- Surface video vlcj rendue dans un ImageView JavaFX (callback) -->
+        <dependency>
+            <groupId>uk.co.caprica</groupId>
+            <artifactId>vlcj-javafx</artifactId>
+            <version>1.2.0</version>
+        </dependency>
     </dependencies>
 
     <build>

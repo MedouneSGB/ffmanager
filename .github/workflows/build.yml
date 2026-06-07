@@ -61,6 +61,39 @@ jobs:
         chmod +x target/input-jar/ffmpeg* target/input-jar/ffprobe* 2>/dev/null || true
         ls -la target/input-jar/
 
+    # Telecharge le runtime VLC (libVLC) et le place dans target/input-jar/vlc/.
+    # jpackage le copie sous app/vlc/, ou findBundledVlc() (App.java) le detecte
+    # -> moteur de lecture VLC autonome, sans installation VLC requise.
+    # libVLC est LGPL : le bundling est autorise (attribution VideoLAN conservee).
+    - name: Download & Bundle VLC runtime (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: bash
+      run: |
+        VLC_VERSION=3.0.21
+        curl -L -o vlc.zip "https://download.videolan.org/pub/videolan/vlc/${VLC_VERSION}/win64/vlc-${VLC_VERSION}-win64.zip"
+        7z x vlc.zip -ovlc-extract >/dev/null
+        SRC="vlc-extract/vlc-${VLC_VERSION}"
+        mkdir -p target/input-jar/vlc
+        cp "$SRC/libvlc.dll" target/input-jar/vlc/
+        cp "$SRC/libvlccore.dll" target/input-jar/vlc/
+        cp -r "$SRC/plugins" target/input-jar/vlc/plugins
+        ls -la target/input-jar/vlc/
+
+    - name: Download & Bundle VLC runtime (macOS)
+      if: matrix.os == 'macos-latest'
+      shell: bash
+      run: |
+        VLC_VERSION=3.0.21
+        curl -L -o vlc.dmg "https://download.videolan.org/pub/videolan/vlc/${VLC_VERSION}/macosx/vlc-${VLC_VERSION}-universal.dmg"
+        hdiutil attach vlc.dmg -mountpoint /Volumes/VLCRT -nobrowse -quiet
+        APP="/Volumes/VLCRT/VLC.app/Contents/MacOS"
+        mkdir -p target/input-jar/vlc
+        cp -L "$APP/lib/libvlc.dylib"     target/input-jar/vlc/ || true
+        cp -L "$APP/lib/libvlccore.dylib" target/input-jar/vlc/ || true
+        cp -RL "$APP/plugins" target/input-jar/vlc/plugins || true
+        hdiutil detach /Volumes/VLCRT -quiet || true
+        ls -la target/input-jar/vlc/ || true
+
     # Etape de conversion de l'icone PNG en format ICNS sous macOS
     - name: Convert PNG to ICNS (macOS)
       if: matrix.os == 'macos-latest'
