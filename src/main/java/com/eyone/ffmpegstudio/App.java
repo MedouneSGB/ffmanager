@@ -1131,6 +1131,9 @@ public class App extends Application {
 
             Button playPauseBtn = new Button("⏸");
             playPauseBtn.getStyleClass().add("btn-secondary");
+            playPauseBtn.setMinWidth(36);
+            playPauseBtn.setPrefWidth(36);
+            playPauseBtn.setStyle("-fx-padding: 6 0 6 0; -fx-alignment: center;");
             playPauseBtn.setOnAction(e -> {
                 if (vp.status().isPlaying()) {
                     vp.controls().pause();
@@ -1143,15 +1146,24 @@ public class App extends Application {
 
             Label timeLabel = new Label("00:00 / 00:00");
             timeLabel.setStyle("-fx-text-fill: #e1e1e6; -fx-font-family: monospace;");
+            timeLabel.setMinWidth(110);
+            timeLabel.setPrefWidth(110);
+            timeLabel.setAlignment(Pos.CENTER);
 
             Slider timeSlider = new Slider();
             HBox.setHgrow(timeSlider, Priority.ALWAYS);
             timeSlider.getStyleClass().add("slider");
             timeSlider.setMin(0);
+            timeSlider.setMinWidth(50);
 
             Label volLabel = new Label("🔊");
+            volLabel.setMinWidth(24);
+            volLabel.setPrefWidth(24);
+            volLabel.setAlignment(Pos.CENTER);
+
             Slider volSlider = new Slider(0, 1, 0.5);
             volSlider.setPrefWidth(80);
+            volSlider.setMinWidth(60);
             volSlider.getStyleClass().add("slider");
             volSlider.valueProperty().addListener((o, a, b) -> {
                 vp.audio().setVolume((int) Math.round(b.doubleValue() * 100));
@@ -1160,6 +1172,9 @@ public class App extends Application {
 
             Button fsBtn = new Button("⛶");
             fsBtn.getStyleClass().add("btn-secondary");
+            fsBtn.setMinWidth(36);
+            fsBtn.setPrefWidth(36);
+            fsBtn.setStyle("-fx-padding: 6 0 6 0; -fx-alignment: center;");
             fsBtn.setOnAction(e -> playerStage.setFullScreen(!playerStage.isFullScreen()));
 
             controls.getChildren().addAll(playPauseBtn, timeSlider, timeLabel, volLabel, volSlider, fsBtn);
