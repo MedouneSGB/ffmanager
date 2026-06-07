@@ -1256,6 +1256,28 @@ public class App extends Application {
                         volLabel.setText(vp.audio().isMute() ? "🔇" : "🔊");
                     }
                     case F -> fsBtn.fire();
+                    case LEFT -> {
+                        long cur = vp.status().time();
+                        long target = Math.max(0, cur - 10000);
+                        vp.controls().setTime(target);
+                        keyEvent.consume();
+                    }
+                    case RIGHT -> {
+                        long cur = vp.status().time();
+                        long target = totalMs[0] > 0 ? Math.min(totalMs[0], cur + 10000) : cur + 10000;
+                        vp.controls().setTime(target);
+                        keyEvent.consume();
+                    }
+                    case UP -> {
+                        double nextVol = Math.min(1.0, volSlider.getValue() + 0.05);
+                        volSlider.setValue(nextVol);
+                        keyEvent.consume();
+                    }
+                    case DOWN -> {
+                        double nextVol = Math.max(0.0, volSlider.getValue() - 0.05);
+                        volSlider.setValue(nextVol);
+                        keyEvent.consume();
+                    }
                     default -> {}
                 }
             });
