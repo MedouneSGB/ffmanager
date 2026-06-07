@@ -19,9 +19,6 @@ import javafx.scene.image.ImageView;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.*;
-import javafx.scene.media.Media;
-import javafx.scene.media.MediaPlayer;
-import javafx.scene.media.MediaView;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
@@ -91,15 +88,13 @@ public class App extends Application {
     private final Label ffmpegStatusLabel = new Label();
 
     // Référence du lecteur de streaming
-    private MediaPlayer mediaPlayer;
     private HttpServer localServer;
     private Stage primaryStage;
     private Stage activePlayerStage;
     private volatile boolean playerActive = false;
 
-    // Moteur de lecture sélectionné ("javafx" ou "vlc") + état du moteur VLC.
+    // Moteur de lecture (VLC/libVLC via vlcj) + état du moteur VLC.
     private String playerEngine = "vlc";
-    private boolean vlcFallbackNotified = false; // alerte de repli affichée au plus une fois/session
     private Boolean vlcAvailable; // mémoïsé : null = pas encore testé
     private MediaPlayerFactory vlcFactory;
     private EmbeddedMediaPlayer vlcPlayer;
@@ -1027,45 +1022,25 @@ public class App extends Application {
         playerActive = true;
         currentPlayingSource = source;
 
-        // 2. Moteur VLC : lit la source brute directement (bypass du proxy/transmux).
-        if ("vlc".equals(playerEngine)) {
-            if (isVlcAvailable()) {
-                openVlcPlayerStage(source, parentStage);
-                return;
-            }
-            // VLC indisponible → repli silencieux sur JavaFX, en informant une seule fois par session.
-            if (!vlcFallbackNotified) {
-                vlcFallbackNotified = true;
-                Platform.runLater(() -> {
-                    Alert alert = new Alert(Alert.AlertType.WARNING);
-                    alert.setTitle("Lecteur VLC indisponible");
-                    alert.setHeaderText("VLC n'a pas été trouvé sur ce système.");
-                    alert.setContentText("La lecture utilise le lecteur JavaFX natif à la place.\n"
-                            + "Installez VLC ou utilisez une version embarquée pour activer ce moteur.");
-                    styleDialog(alert, parentStage);
-                    alert.showAndWait();
-                });
-            }
+        // Moteur VLC : lit la source brute directement (fichier local ou URL réseau),
+        // libVLC décodant nativement HLS, fMP4, MKV, HEVC, etc.
+        if (isVlcAvailable()) {
+            openVlcPlayerStage(source, parentStage);
+            return;
         }
 
-        // 3. Moteur JavaFX : passage par le proxy localhost (codecs limités à H.264/AAC).
-        if (source.startsWith("http://") || source.startsWith("https://")) {
-            try {
-                String mediaUrl;
-                if (source.contains(".m3u8")) {
-                    mediaUrl = "http://localhost:8555/proxy-m3u8/playlist.m3u8?url=" + java.net.URLEncoder.encode(source, "UTF-8");
-                } else {
-                    mediaUrl = "http://localhost:8555/proxy-video/video.mp4?url=" + java.net.URLEncoder.encode(source, "UTF-8");
-                }
-                openMediaPlayerStage(mediaUrl, parentStage);
-            } catch (Exception e) {
-                System.err.println("[PLAY] Erreur lors de la préparation de l'URL proxy : " + e.getMessage());
-            }
-        } else {
-            // Fichier local, on l'ouvre directement
-            String mediaUrl = new File(source).toURI().toString();
-            openMediaPlayerStage(mediaUrl, parentStage);
-        }
+        // VLC indisponible : plus de repli JavaFX, on informe l'utilisateur.
+        playerActive = false;
+        currentPlayingSource = null;
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Lecteur VLC indisponible");
+            alert.setHeaderText("VLC (libVLC) n'a pas été trouvé sur ce système.");
+            alert.setContentText("La lecture intégrée nécessite VLC.\n"
+                    + "Installez VLC ou utilisez une version packagée de l'application (libVLC embarqué).");
+            styleDialog(alert, parentStage);
+            alert.showAndWait();
+        });
     }
 
     private synchronized void startHlsTransmux(String source) throws java.io.IOException {
@@ -1100,324 +1075,6 @@ public class App extends Application {
         
         activeTransmuxProcess = pb.start();
         activeTransmuxUrl = source;
-    }
-
-    private void openMediaPlayerStage(String mediaUrl, Stage parentStage) {
-        try {
-
-
-            Media media = new Media(mediaUrl);
-            media.setOnError(() -> {
-                Throwable t = media.getError();
-                System.err.println("[ERROR] Erreur du Media JavaFX : " + (t != null ? t.getMessage() : "Inconnue"));
-                if (t != null) {
-                    t.printStackTrace(System.err);
-                }
-            });
-
-            mediaPlayer = new MediaPlayer(media);
-            final MediaPlayer player = mediaPlayer;
-            MediaView mediaView = new MediaView(player);
-
-            Stage playerStage = new Stage();
-            activePlayerStage = playerStage;
-            playerStage.initOwner(parentStage);
-            playerStage.setTitle("Lecteur de Flux - FFmpeg Studio 🎥");
-            try {
-                playerStage.getIcons().add(new javafx.scene.image.Image(getClass().getResourceAsStream("/icon.png")));
-            } catch (Exception e) {
-                // Ignorer
-            }
-            playerStage.setResizable(true);
-            playerStage.setMinWidth(550);  // Fixe une largeur minimale de sécurité
-            playerStage.setMinHeight(300); // Fixe une hauteur minimale de sécurité
-
-            StackPane videoPane = new StackPane(mediaView);
-            videoPane.setStyle("-fx-background-color: #000000;");
-            videoPane.setMinSize(0, 0); // Permet de rétrécir sous la taille d'origine de la vidéo
-            
-            // Double-clic pour basculer le plein écran
-            videoPane.setOnMouseClicked(e -> {
-                if (e.getClickCount() == 2) {
-                    playerStage.setFullScreen(!playerStage.isFullScreen());
-                }
-            });
-            
-            // Lier les dimensions de la vidéo à la fenêtre
-            mediaView.fitWidthProperty().bind(videoPane.widthProperty());
-            mediaView.fitHeightProperty().bind(videoPane.heightProperty());
-            mediaView.setPreserveRatio(true);
-
-            // Barre de contrôles flottante premium
-            HBox controls = new HBox(12);
-            controls.setAlignment(Pos.CENTER);
-            controls.setPadding(new Insets(10, 15, 10, 15));
-            controls.setStyle("-fx-background-color: rgba(26, 26, 36, 0.85); -fx-border-color: #2b2b36; -fx-border-width: 1px; -fx-background-radius: 8px; -fx-border-radius: 8px;");
-            controls.setMinHeight(HBox.USE_PREF_SIZE); // Évite que les contrôles ne soient écrasés lors du resize vertical
-            controls.setMaxHeight(HBox.USE_PREF_SIZE); // Empêche le StackPane d'étirer verticalement les contrôles
-
-            Button playPauseBtn = new Button("⏸");
-            playPauseBtn.getStyleClass().add("btn-secondary");
-            playPauseBtn.setOnAction(e -> {
-                if (player.getStatus() == MediaPlayer.Status.PLAYING) {
-                    player.pause();
-                    playPauseBtn.setText("▶");
-                } else {
-                    player.play();
-                    playPauseBtn.setText("⏸");
-                }
-            });
-
-            Label timeLabel = new Label("00:00 / 00:00");
-            timeLabel.setStyle("-fx-text-fill: #e1e1e6; -fx-font-family: monospace;");
-
-            Slider timeSlider = new Slider();
-            HBox.setHgrow(timeSlider, Priority.ALWAYS);
-            timeSlider.getStyleClass().add("slider");
-            timeSlider.setMin(0);
-
-            // Volume
-            Label volLabel = new Label("🔊");
-            Slider volSlider = new Slider(0, 1, 0.5);
-            volSlider.setPrefWidth(80);
-            volSlider.getStyleClass().add("slider");
-            player.setVolume(0.5);
-            volSlider.valueProperty().addListener((o, a, b) -> {
-                player.setVolume(b.doubleValue());
-                volLabel.setText(b.doubleValue() == 0 ? "🔇" : "🔊");
-            });
-
-            // Bouton Plein Écran
-            Button fsBtn = new Button("⛶");
-            fsBtn.getStyleClass().add("btn-secondary");
-            fsBtn.setOnAction(e -> playerStage.setFullScreen(!playerStage.isFullScreen()));
-
-            controls.getChildren().addAll(playPauseBtn, timeSlider, timeLabel, volLabel, volSlider, fsBtn);
-
-            // Événement d'état Prêt
-            player.setOnReady(() -> {
-                Duration duration = player.getTotalDuration();
-                if (duration.isUnknown() || duration.isIndefinite()) {
-                    timeSlider.setDisable(true);
-                    timeLabel.setText("Direct / Live");
-                } else {
-                    timeSlider.setMax(duration.toSeconds());
-                    timeSlider.setDisable(false);
-                }
-                
-                double mediaW = media.getWidth();
-                double mediaH = media.getHeight();
-                double targetW = 854; // Taille par défaut de base
-                double targetH = 480;
-                
-                if (mediaW > 0 && mediaH > 0) {
-                    double ratio = mediaW / mediaH;
-                    // Limiter la taille par défaut pour éviter d'ouvrir une fenêtre géante
-                    if (mediaW > 960 || mediaH > 540) {
-                        if (ratio > 960.0 / 540.0) {
-                            targetW = 960;
-                            targetH = 960 / ratio;
-                        } else {
-                            targetH = 540;
-                            targetW = 540 * ratio;
-                        }
-                    } else {
-                        targetW = Math.max(640, mediaW);
-                        targetH = Math.max(360, mediaH);
-                    }
-                }
-                
-                playerStage.setWidth(targetW);
-                playerStage.setHeight(targetH + 90); // 90px de marge pour les contrôles et les bordures de fenêtre
-            });
-
-            // Événement d'Erreur
-            player.setOnError(() -> {
-                Throwable t = player.getError();
-                String err = t != null ? t.getMessage() : "Inconnue";
-                System.err.println("[ERROR] Erreur du MediaPlayer JavaFX : " + err);
-                if (t != null) {
-                    t.printStackTrace(System.err);
-                }
-                
-                String originalUrl = extractOriginalUrl(mediaUrl);
-                
-                Platform.runLater(() -> {
-                    if (originalUrl != null) {
-                        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                        alert.setTitle("Erreur de Lecture");
-                        alert.setHeaderText("Lecture directe impossible");
-                        alert.setContentText("Ce flux vidéo ne peut pas être visionné en direct en raison de restrictions de format du système.\n\nVoulez-vous le télécharger à la place ?");
-                        styleDialog(alert, playerStage);
-                        
-                        ButtonType downloadBtnType = new ButtonType("Télécharger", ButtonBar.ButtonData.OK_DONE);
-                        ButtonType cancelBtnType = new ButtonType("Annuler", ButtonBar.ButtonData.CANCEL_CLOSE);
-                        alert.getButtonTypes().setAll(downloadBtnType, cancelBtnType);
-                        
-                        alert.showAndWait().ifPresent(response -> {
-                            if (response == downloadBtnType) {
-                                urlSourceRadio.setSelected(true);
-                                urlField.setText(originalUrl);
-                                presetBox.getSelectionModel().select(Preset.DOWNLOAD_STREAM);
-                                if (primaryStage != null) {
-                                    primaryStage.show();
-                                    primaryStage.toFront();
-                                    primaryStage.setIconified(false);
-                                }
-                            }
-                        });
-                    } else {
-                        Alert alert = new Alert(Alert.AlertType.ERROR);
-                        alert.setTitle("Erreur de Lecture");
-                        alert.setHeaderText("Impossible de lire ce flux vidéo.");
-                        alert.setContentText("Détail : " + err + "\n\nAssurez-vous que le flux est valide, actif et décodable nativement par le système (H.264/AAC).");
-                        styleDialog(alert, playerStage);
-                        alert.showAndWait();
-                    }
-                    playerStage.close();
-                });
-            });
-
-            // Mettre à jour le temps de lecture
-            player.currentTimeProperty().addListener((o, oldTime, newTime) -> {
-                if (!timeSlider.isPressed() && !timeSlider.isValueChanging()) {
-                    timeSlider.setValue(newTime.toSeconds());
-                }
-                updateTimeLabel(timeLabel, newTime, player.getTotalDuration());
-            });
-
-            // Recherche (Seek) lors d'un clic direct ou d'un glissement
-            timeSlider.setOnMousePressed(e -> player.pause());
-            timeSlider.setOnMouseReleased(e -> {
-                player.seek(Duration.seconds(timeSlider.getValue()));
-                if (playPauseBtn.getText().equals("⏸")) {
-                    player.play();
-                }
-            });
-            timeSlider.setOnMouseClicked(e -> {
-                player.seek(Duration.seconds(timeSlider.getValue()));
-            });
-
-            StackPane playerLayout = new StackPane();
-            playerLayout.getChildren().addAll(videoPane, controls);
-            StackPane.setAlignment(controls, Pos.BOTTOM_CENTER);
-            StackPane.setMargin(controls, new Insets(0, 15, 15, 15));
-
-            Scene scene = new Scene(playerLayout, 640, 420);
-            scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-
-            // Timer d'inactivité de la souris (2.5 secondes)
-            PauseTransition idleTimeout = new PauseTransition(Duration.seconds(2.5));
-
-            // Animation de disparition progressive (Fade Out)
-            FadeTransition fadeOut = new FadeTransition(Duration.millis(350), controls);
-            fadeOut.setFromValue(1.0);
-            fadeOut.setToValue(0.0);
-            fadeOut.setOnFinished(evt -> {
-                controls.setVisible(false);
-                scene.setCursor(Cursor.NONE);
-            });
-
-            // Animation d'apparition progressive (Fade In)
-            FadeTransition fadeIn = new FadeTransition(Duration.millis(250), controls);
-            fadeIn.setToValue(1.0);
-
-            // Fonctions utilitaires pour afficher/masquer les contrôles
-            Runnable showControls = () -> {
-                if (fadeOut.getStatus() == Animation.Status.RUNNING) {
-                    fadeOut.stop();
-                }
-                if (!controls.isVisible() || controls.getOpacity() < 1.0) {
-                    controls.setVisible(true);
-                    fadeIn.setFromValue(controls.getOpacity());
-                    fadeIn.playFromStart();
-                }
-                scene.setCursor(Cursor.DEFAULT);
-            };
-
-            Runnable hideControls = () -> {
-                if (player.getStatus() == MediaPlayer.Status.PLAYING && !controls.isHover()) {
-                    if (fadeIn.getStatus() == Animation.Status.RUNNING) {
-                        fadeIn.stop();
-                    }
-                    fadeOut.setFromValue(controls.getOpacity());
-                    fadeOut.playFromStart();
-                } else if (controls.isHover() && player.getStatus() == MediaPlayer.Status.PLAYING) {
-                    idleTimeout.playFromStart(); // Relancer le timer
-                }
-            };
-
-            idleTimeout.setOnFinished(evt -> hideControls.run());
-
-            // Événements de souris sur le layout du lecteur
-            playerLayout.setOnMouseMoved(e -> {
-                showControls.run();
-                if (player.getStatus() == MediaPlayer.Status.PLAYING) {
-                    idleTimeout.playFromStart();
-                } else {
-                    idleTimeout.stop();
-                }
-            });
-
-            playerLayout.setOnMouseDragged(e -> {
-                showControls.run();
-                if (player.getStatus() == MediaPlayer.Status.PLAYING) {
-                    idleTimeout.playFromStart();
-                } else {
-                    idleTimeout.stop();
-                }
-            });
-
-            playerLayout.setOnMouseExited(e -> {
-                if (player.getStatus() == MediaPlayer.Status.PLAYING) {
-                    hideControls.run();
-                }
-            });
-
-            // Écouter le statut du lecteur pour forcer l'affichage ou démarrer le timer
-            player.statusProperty().addListener((obs, oldStatus, newStatus) -> {
-                if (newStatus == MediaPlayer.Status.PLAYING) {
-                    idleTimeout.playFromStart();
-                } else {
-                    idleTimeout.stop();
-                    showControls.run();
-                }
-            });
-
-            // Raccourcis clavier (Espace = Play/Pause, M = Muet, F = Plein Écran)
-            scene.setOnKeyPressed(keyEvent -> {
-                switch (keyEvent.getCode()) {
-                    case SPACE -> playPauseBtn.fire();
-                    case M -> {
-                        player.setMute(!player.isMute());
-                        volLabel.setText(player.isMute() ? "🔇" : "🔊");
-                    }
-                    case F -> fsBtn.fire();
-                    default -> {}
-                }
-            });
-
-            playerStage.setScene(scene);
-
-            playerStage.setOnCloseRequest(e -> {
-                idleTimeout.stop();
-                fadeOut.stop();
-                fadeIn.stop();
-                activePlayerStage = null;
-                disposeMediaPlayer();
-            });
-
-            playerStage.show();
-            player.play();
-
-        } catch (Exception ex) {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Erreur");
-            alert.setHeaderText("Impossible d'initialiser le lecteur vidéo.");
-            alert.setContentText(ex.getMessage());
-            styleDialog(alert, parentStage);
-            alert.showAndWait();
-        }
     }
 
     /**
@@ -3175,30 +2832,6 @@ public class App extends Application {
             }, "vlc-dispose").start();
         }
 
-        final MediaPlayer oldPlayer = mediaPlayer;
-        if (oldPlayer != null) {
-            mediaPlayer = null;
-            Runnable r = () -> {
-                try {
-                    oldPlayer.stop();
-                    // Différer le dispose au prochain pulse JavaFX pour laisser à stop() le temps d'initier le nettoyage GStreamer
-                    Platform.runLater(() -> {
-                        try {
-                            oldPlayer.dispose();
-                        } catch (Exception ex) {
-                            // Ignore
-                        }
-                    });
-                } catch (Exception ex) {
-                    // Ignore
-                }
-            };
-            if (Platform.isFxApplicationThread()) {
-                r.run();
-            } else {
-                Platform.runLater(r);
-            }
-        }
         if (activePlayerStage != null) {
             Platform.runLater(() -> {
                 if (activePlayerStage != null) {
