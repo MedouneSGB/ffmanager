@@ -1638,16 +1638,16 @@ public class App extends Application {
 
         TableColumn<Job, Void> actionCol = new TableColumn<>("Actions");
         actionCol.setCellFactory(col -> new TableCell<>() {
-            private final Button cancelBtn = new Button("Annuler");
-            private final Button fileBtn = new Button("Fichier");
-            private final Button playBtn = new Button("Lire");
+            private final Button cancelBtn = new Button();
+            private final Button fileBtn = new Button("📂");
+            private final Button playBtn = new Button("▶");
             private final HBox container = new HBox(6, cancelBtn, fileBtn, playBtn);
             
             private final javafx.beans.value.ChangeListener<Job.Status> statusListener = (obs, oldStatus, newStatus) -> {
                 updateButtons(newStatus);
             };
             private Job currentJob = null;
-
+ 
             {
                 container.setAlignment(Pos.CENTER);
                 cancelBtn.getStyleClass().add("btn-danger");
@@ -1658,6 +1658,10 @@ public class App extends Application {
                 cancelBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
                 fileBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
                 playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px;");
+                
+                cancelBtn.setTooltip(new Tooltip("Annuler ou supprimer"));
+                fileBtn.setTooltip(new Tooltip("Afficher le dossier du fichier"));
+                playBtn.setTooltip(new Tooltip("Lire le fichier"));
                 
                 cancelBtn.setOnAction(e -> {
                     if (currentJob != null) {
@@ -1690,12 +1694,13 @@ public class App extends Application {
                     }
                 });
             }
-
+ 
             private void updateButtons(Job.Status status) {
                 if (currentJob == null) return;
                 
                 if (status == Job.Status.EN_ATTENTE || status == Job.Status.EN_COURS) {
-                    cancelBtn.setText("Annuler");
+                    cancelBtn.setText("❌");
+                    cancelBtn.setTooltip(new Tooltip("Annuler la tâche"));
                     cancelBtn.setVisible(true);
                     cancelBtn.setManaged(true);
                     
@@ -1705,7 +1710,8 @@ public class App extends Application {
                     playBtn.setVisible(false);
                     playBtn.setManaged(false);
                 } else {
-                    cancelBtn.setText("Supprimer");
+                    cancelBtn.setText("🗑");
+                    cancelBtn.setTooltip(new Tooltip("Supprimer de la file"));
                     cancelBtn.setVisible(true);
                     cancelBtn.setManaged(true);
                     
@@ -1717,6 +1723,8 @@ public class App extends Application {
                         playBtn.setVisible(true);
                         playBtn.setManaged(true);
                         playBtn.setDisable(false);
+                        playBtn.setText("▶");
+                        playBtn.setTooltip(new Tooltip("Lire le fichier"));
                         playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214; -fx-font-weight: bold;");
                     } else {
                         fileBtn.setVisible(false);
