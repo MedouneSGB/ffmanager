@@ -88,16 +88,13 @@ public class App extends Application {
     private final TextField extraArgsField = new TextField();
     private final TextArea commandPreview = new TextArea();
     private final TableView<Job> table = new TableView<>();
-    private final Label ffmpegStatusLabel = new Label();
-
     // Référence du lecteur de streaming
     private HttpServer localServer;
     private Stage primaryStage;
     private Stage activePlayerStage;
     private volatile boolean playerActive = false;
 
-    // Moteur de lecture (VLC/libVLC via vlcj) + état du moteur VLC.
-    private String playerEngine = "vlc";
+    // Moteur de lecture : VLC/libVLC via vlcj.
     private Boolean vlcAvailable; // mémoïsé : null = pas encore testé
     private MediaPlayerFactory vlcFactory;
     private EmbeddedMediaPlayer vlcPlayer;
@@ -119,11 +116,9 @@ public class App extends Application {
             return;
         }
         this.primaryStage = stage;
-        // Chargement des chemins FFmpeg
+        // Chargement des chemins FFmpeg (binaires embarqués détectés automatiquement).
         initFFmpegPaths();
-        // Moteur de lecture choisi par l'utilisateur (VLC par défaut, repli JavaFX si absent).
-        playerEngine = prefs.get("playerEngine", "vlc");
-        
+
         runner = new FFmpegRunner(ffmpegPath, ffprobePath);
         queue = new JobQueueService(runner);
         
@@ -146,11 +141,6 @@ public class App extends Application {
             appTitle.setText("FFmpeg Studio 🎥");
         }
         
-        ffmpegStatusLabel.getStyleClass().add("label");
-        Button configBtn = new Button("Configurer...");
-        configBtn.getStyleClass().add("btn-secondary");
-        configBtn.setOnAction(e -> showPathConfigDialog(stage));
-        
         Button themeToggleBtn = new Button("\u2600");
         themeToggleBtn.getStyleClass().add("btn-secondary");
         themeToggleBtn.setOnAction(e -> {
@@ -166,14 +156,14 @@ public class App extends Application {
 
         Button logsBtn = new Button("Logs 📋");
         logsBtn.getStyleClass().add("btn-secondary");
-        logsBtn.setOnAction(e -> openLogFile());
+        logsBtn.setOnAction(e -> showLogPanel(stage));
 
         Button sponsorBtn = new Button("💜 Soutenir");
         sponsorBtn.getStyleClass().add("btn-secondary");
         sponsorBtn.setTooltip(new Tooltip("Soutenir le développement de FFmpeg Studio"));
         sponsorBtn.setOnAction(e -> openUrl(SPONSOR_URL, stage));
 
-        HBox statusBox = new HBox(12, ffmpegStatusLabel, sponsorBtn, themeToggleBtn, logsBtn, configBtn);
+        HBox statusBox = new HBox(12, sponsorBtn, themeToggleBtn, logsBtn);
         statusBox.setAlignment(Pos.CENTER_RIGHT);
         
         BorderPane header = new BorderPane();
@@ -181,8 +171,6 @@ public class App extends Application {
         header.setRight(statusBox);
         header.setPadding(new Insets(10, 15, 10, 15));
         header.setStyle("-fx-background-color: bg-header; -fx-border-color: transparent transparent border-header transparent; -fx-border-width: 1px;");
-        
-        updateFFmpegStatusUI();
 
         // --- Colonne de Gauche (Configuration) ---
         VBox controlsContainer = new VBox(15);
@@ -714,153 +702,6 @@ public class App extends Application {
             e.printStackTrace(System.err);
             return false;
         }
-    }
-
-    private void updateFFmpegStatusUI() {
-        boolean ffOk = checkExecutable(ffmpegPath);
-        boolean fpOk = checkExecutable(ffprobePath);
-        
-        ffmpegStatusLabel.getStyleClass().clear();
-        if (ffOk && fpOk) {
-            ffmpegStatusLabel.setText("✓ FFmpeg & ffprobe détectés");
-            ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-ok");
-        } else if (!ffOk && !fpOk) {
-            ffmpegStatusLabel.setText("⚠ FFmpeg & ffprobe non trouvés");
-            ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
-        } else if (!ffOk) {
-            ffmpegStatusLabel.setText("⚠ FFmpeg non trouvé");
-            ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
-        } else {
-            ffmpegStatusLabel.setText("⚠ ffprobe non trouvé");
-            ffmpegStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
-        }
-    }
-
-    private void showPathConfigDialog(Stage parentStage) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle("Configuration des chemins FFmpeg");
-        dialog.setHeaderText("Spécifiez les chemins absolus vers les exécutables FFmpeg.");
-        styleDialog(dialog, parentStage);
-
-        ButtonType saveButtonType = new ButtonType("Enregistrer", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(saveButtonType, ButtonType.CANCEL);
-
-        GridPane grid = new GridPane();
-        grid.setHgap(10);
-        grid.setVgap(10);
-        grid.setPadding(new Insets(15));
-
-        TextField ffmpegField = new TextField(ffmpegPath);
-        ffmpegField.setPrefWidth(300);
-        Button browseFf = new Button("Parcourir...");
-        browseFf.getStyleClass().add("btn-secondary");
-        boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
-        
-        TextField ffprobeField = new TextField(ffprobePath);
-        ffprobeField.setPrefWidth(300);
-        Button browseFp = new Button("Parcourir...");
-        browseFp.getStyleClass().add("btn-secondary");
-
-        ffmpegField.textProperty().addListener((obs, oldVal, newVal) -> {
-            String val = sanitizePath(newVal);
-            if (!val.isEmpty()) {
-                File ffmpegFile = new File(val);
-                if (ffmpegFile.isFile()) {
-                    File parent = ffmpegFile.getParentFile();
-                    if (parent != null) {
-                        String probeName = isWindows ? "ffprobe.exe" : "ffprobe";
-                        File ffprobeFile = new File(parent, probeName);
-                        if (ffprobeFile.exists()) {
-                            String currentFp = sanitizePath(ffprobeField.getText());
-                            if (currentFp.isEmpty() || currentFp.equals("ffprobe") || currentFp.equals("ffprobe.exe") || !new File(currentFp).exists()) {
-                                ffprobeField.setText(ffprobeFile.getAbsolutePath());
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        browseFf.setOnAction(e -> {
-            FileChooser fc = new FileChooser();
-            fc.setTitle("Sélectionner ffmpeg" + (isWindows ? ".exe" : ""));
-            if (isWindows) {
-                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable (*.exe)", "*.exe"));
-            } else {
-                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable", "*"));
-            }
-            File file = fc.showOpenDialog(dialog.getOwner());
-            if (file != null) {
-                ffmpegField.setText(file.getAbsolutePath());
-            }
-        });
-
-        browseFp.setOnAction(e -> {
-            FileChooser fc = new FileChooser();
-            fc.setTitle("Sélectionner ffprobe" + (isWindows ? ".exe" : ""));
-            if (isWindows) {
-                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable (*.exe)", "*.exe"));
-            } else {
-                fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Exécutable", "*"));
-            }
-            File file = fc.showOpenDialog(dialog.getOwner());
-            if (file != null) {
-                ffprobeField.setText(file.getAbsolutePath());
-            }
-        });
-
-        grid.add(new Label("Chemin ffmpeg :"), 0, 0);
-        grid.add(ffmpegField, 1, 0);
-        grid.add(browseFf, 2, 0);
-
-        grid.add(new Label("Chemin ffprobe :"), 0, 1);
-        grid.add(ffprobeField, 1, 1);
-        grid.add(browseFp, 2, 1);
-
-        // Sélection du moteur de lecture (JavaFX natif vs VLC).
-        final String ENGINE_JAVAFX = "JavaFX (natif)";
-        final String ENGINE_VLC = "VLC (formats variés : HLS, MKV, HEVC…)";
-        ComboBox<String> playerEngineBox = new ComboBox<>();
-        playerEngineBox.getItems().addAll(ENGINE_JAVAFX, ENGINE_VLC);
-        playerEngineBox.setValue("vlc".equals(playerEngine) ? ENGINE_VLC : ENGINE_JAVAFX);
-        playerEngineBox.setPrefWidth(300);
-
-        Label vlcStatusLabel = new Label();
-        boolean vlcOk = isVlcAvailable();
-        if (vlcOk) {
-            vlcStatusLabel.setText("✓ VLC détecté");
-            vlcStatusLabel.getStyleClass().addAll("label", "ffmpeg-ok");
-        } else {
-            vlcStatusLabel.setText("⚠ VLC non détecté (repli sur JavaFX)");
-            vlcStatusLabel.getStyleClass().addAll("label", "ffmpeg-error");
-        }
-
-        grid.add(new Label("Lecteur vidéo :"), 0, 2);
-        grid.add(playerEngineBox, 1, 2);
-        grid.add(vlcStatusLabel, 2, 2);
-
-        dialog.getDialogPane().setContent(grid);
-
-        dialog.showAndWait().ifPresent(response -> {
-            if (response == saveButtonType) {
-                String ff = sanitizePath(ffmpegField.getText());
-                String fp = sanitizePath(ffprobeField.getText());
-
-                ffmpegPath = ff;
-                ffprobePath = fp;
-                prefs.put("ffmpegPath", ff);
-                prefs.put("ffprobePath", fp);
-
-                runner.setFfmpegPath(ff);
-                runner.setFfprobePath(fp);
-
-                playerEngine = ENGINE_VLC.equals(playerEngineBox.getValue()) ? "vlc" : "javafx";
-                prefs.put("playerEngine", playerEngine);
-
-                updateFFmpegStatusUI();
-                updatePreview();
-            }
-        });
     }
 
     private void updateControlsState() {
@@ -2998,35 +2839,62 @@ public class App extends Application {
         }
     }
 
-    private void openLogFile() {
-        java.io.File file = new java.io.File("errors.log");
-        if (!file.exists()) {
+    /** Affiche un panneau présentant directement le contenu du journal, avec rafraîchissement et vidage. */
+    private void showLogPanel(Stage parentStage) {
+        final java.io.File file = new java.io.File("errors.log");
+
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Logs de l'application");
+        dialog.setHeaderText("Contenu du journal (errors.log)");
+        styleDialog(dialog, parentStage);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        TextArea logArea = new TextArea();
+        logArea.setEditable(false);
+        logArea.setWrapText(false);
+        logArea.setStyle("-fx-font-family: 'monospace';");
+        VBox.setVgrow(logArea, Priority.ALWAYS);
+
+        Runnable reload = () -> {
+            String content = "";
             try {
-                file.createNewFile();
-            } catch (Exception ex) {
-                // ignore
-            }
-        }
-        if (file.exists()) {
-            try {
-                String os = System.getProperty("os.name").toLowerCase();
-                if (os.contains("win")) {
-                    new ProcessBuilder("notepad.exe", file.getAbsolutePath()).start();
-                } else if (os.contains("mac")) {
-                    new ProcessBuilder("open", "-e", file.getAbsolutePath()).start();
-                } else {
-                    new ProcessBuilder("xdg-open", file.getAbsolutePath()).start();
+                if (file.exists()) {
+                    content = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
                 }
             } catch (Exception ex) {
-                try {
-                    if (java.awt.Desktop.isDesktopSupported()) {
-                        java.awt.Desktop.getDesktop().open(file);
-                    }
-                } catch (Exception e2) {
-                    System.err.println("Impossible d'ouvrir le fichier de log : " + e2.getMessage());
-                }
+                content = "Impossible de lire le journal : " + ex.getMessage();
             }
-        }
+            logArea.setText(content.isEmpty() ? "(journal vide)" : content);
+            logArea.positionCaret(logArea.getLength());
+        };
+        reload.run();
+
+        Button refreshBtn = new Button("🔄 Rafraîchir");
+        refreshBtn.getStyleClass().add("btn-secondary");
+        refreshBtn.setOnAction(e -> reload.run());
+
+        Button clearBtn = new Button("🗑 Supprimer les logs");
+        clearBtn.getStyleClass().add("btn-secondary");
+        clearBtn.setOnAction(e -> {
+            try {
+                // Tronque le fichier à 0 octet ; le flux d'écriture en mode append reprend ensuite depuis le début.
+                new java.io.FileOutputStream(file, false).close();
+            } catch (Exception ex) {
+                System.err.println("Impossible de vider le journal : " + ex.getMessage());
+            }
+            reload.run();
+        });
+
+        HBox actions = new HBox(10, refreshBtn, clearBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+
+        VBox content = new VBox(10, logArea, actions);
+        content.setPadding(new Insets(10));
+
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().setPrefSize(760, 520);
+        dialog.setResizable(true);
+        dialog.showAndWait();
     }
 
     @Override
