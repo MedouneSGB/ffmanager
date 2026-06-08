@@ -54,6 +54,9 @@ import java.util.stream.Collectors;
  */
 public class App extends Application {
 
+    /** Page de soutien (GitHub Sponsors). */
+    private static final String SPONSOR_URL = "https://github.com/sponsors/MedouneSGB";
+
     private final Preferences prefs = Preferences.userNodeForPackage(App.class);
     private java.awt.TrayIcon trayIcon;
     private String ffmpegPath;
@@ -164,8 +167,13 @@ public class App extends Application {
         Button logsBtn = new Button("Logs 📋");
         logsBtn.getStyleClass().add("btn-secondary");
         logsBtn.setOnAction(e -> openLogFile());
-        
-        HBox statusBox = new HBox(12, ffmpegStatusLabel, themeToggleBtn, logsBtn, configBtn);
+
+        Button sponsorBtn = new Button("💜 Soutenir");
+        sponsorBtn.getStyleClass().add("btn-secondary");
+        sponsorBtn.setTooltip(new Tooltip("Soutenir le développement de FFmpeg Studio"));
+        sponsorBtn.setOnAction(e -> openUrl(SPONSOR_URL, stage));
+
+        HBox statusBox = new HBox(12, ffmpegStatusLabel, sponsorBtn, themeToggleBtn, logsBtn, configBtn);
         statusBox.setAlignment(Pos.CENTER_RIGHT);
         
         BorderPane header = new BorderPane();
@@ -2963,6 +2971,31 @@ public class App extends Application {
             // Le port est libre ou l'instance n'a pas répondu
         }
         return false;
+    }
+
+    /** Ouvre une URL dans le navigateur par défaut (HostServices JavaFX, repli java.awt.Desktop). */
+    private void openUrl(String url, Stage parentStage) {
+        try {
+            getHostServices().showDocument(url);
+        } catch (Throwable primary) {
+            try {
+                if (java.awt.Desktop.isDesktopSupported()) {
+                    java.awt.Desktop.getDesktop().browse(java.net.URI.create(url));
+                    return;
+                }
+                throw primary;
+            } catch (Throwable fallback) {
+                System.err.println("[Soutenir] Impossible d'ouvrir l'URL : " + fallback.getMessage());
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Soutenir FFmpeg Studio");
+                    alert.setHeaderText("Ouvrez ce lien dans votre navigateur :");
+                    alert.setContentText(url);
+                    styleDialog(alert, parentStage);
+                    alert.showAndWait();
+                });
+            }
+        }
     }
 
     private void openLogFile() {
