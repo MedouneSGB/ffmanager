@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>FFmpeg Studio</name>
-    <description>L'interface ultime pour FFmpeg : File d'attente, conversion, lecteur de flux et extension Chrome d'extraction.</description>
+    <description>Le studio tout-en-un pour FFmpeg : convertir, compresser, télécharger et lire vos vidéos — file d'attente, lecteur VLC intégré, capture de flux web et extension Chrome, dans une interface moderne.</description>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
