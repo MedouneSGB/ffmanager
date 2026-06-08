@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>L'interface ultime pour FFmpeg : File d'attente, conversion, lecteur de flux et extension Chrome d'extraction.</b>
+  <b>Le studio tout-en-un pour FFmpeg : convertir, compresser, télécharger et lire vos vidéos — file d'attente, lecteur VLC intégré, capture de flux web et extension Chrome, dans une interface moderne.</b>
 </p>
 
 <p align="center">
