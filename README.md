@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/JavaFX-21-blue.svg" alt="JavaFX 21" />
   <img src="https://img.shields.io/badge/FFmpeg-Compatible-green.svg" alt="FFmpeg" />
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License MIT" />
+  <a href="https://github.com/sponsors/MedouneSGB"><img src="https://img.shields.io/badge/Sponsor-💜-ea4aaa.svg" alt="Sponsor" /></a>
 </p>
 
 ---
@@ -22,6 +23,24 @@
 **FFmpeg Studio** est une interface graphique (GUI) moderne, fluide et performante développée en JavaFX. Conçue pour simplifier la manipulation des commandes FFmpeg complexes, elle intègre un gestionnaire de tâches séquentiel, un lecteur vidéo de streaming haut de gamme, et un module d'extraction automatique de flux réseau (MVP MediaHunter).
 
 Que vous souhaitiez convertir des fichiers locaux, extraire des pistes audio, télécharger des flux HLS à la volée ou prévisualiser des flux distants en direct, FFmpeg Studio regroupe tous ces outils dans un environnement sombre esthétique, cohérent et ergonomique.
+
+---
+
+## 💜 Soutenir le projet
+
+FFmpeg Studio est un logiciel **gratuit et open-source**, développé sur mon temps libre. Si l'outil vous est utile, vous pouvez soutenir son développement et m'aider à continuer à l'améliorer :
+
+<p align="center">
+  <a href="https://github.com/sponsors/MedouneSGB">
+    <img src="https://img.shields.io/badge/💜%20Devenir%20sponsor-GitHub%20Sponsors-ea4aaa?style=for-the-badge" alt="GitHub Sponsors" />
+  </a>
+</p>
+
+👉 **[github.com/sponsors/MedouneSGB](https://github.com/sponsors/MedouneSGB)** — à partir de **5 $/mois** ou via un **don ponctuel**.
+
+Chaque contribution finance le temps de développement, les corrections de bugs et les nouvelles fonctionnalités. Un grand merci à toutes celles et ceux qui soutiennent le projet ! 🙏
+
+Vous pouvez aussi soutenir gratuitement en mettant une ⭐ au dépôt et en partageant l'outil.
 
 ---
 
