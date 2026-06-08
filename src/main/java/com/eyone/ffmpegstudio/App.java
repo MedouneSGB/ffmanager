@@ -228,13 +228,20 @@ public class App extends Application {
         
         Button saveDestBtn = new Button("Enregistrer sous...");
         saveDestBtn.getStyleClass().add("btn-secondary");
+        saveDestBtn.setMinWidth(140);
+        saveDestBtn.setPrefWidth(140);
         saveDestBtn.setOnAction(e -> pickCustomOutput(stage));
         
         Button playUrlBtn = new Button("▶ Lire le flux");
         playUrlBtn.getStyleClass().add("btn-secondary");
+        playUrlBtn.setMinWidth(110);
+        playUrlBtn.setPrefWidth(110);
         playUrlBtn.setOnAction(e -> playActiveStream(stage));
         
         customOutputLabel.setStyle("-fx-font-weight: normal; -fx-text-fill: text-muted;");
+        customOutputLabel.setMinWidth(0);
+        HBox.setHgrow(customOutputLabel, Priority.ALWAYS);
+        
         HBox urlOutputRow = new HBox(12, saveDestBtn, playUrlBtn, customOutputLabel);
         urlOutputRow.setAlignment(Pos.CENTER_LEFT);
         VBox urlRow = new VBox(8, urlInputRow, urlOutputRow);
@@ -1678,6 +1685,7 @@ public class App extends Application {
         nameCol.setCellValueFactory(c ->
                 new javafx.beans.property.SimpleStringProperty(c.getValue().getOutput().getName()));
         nameCol.setPrefWidth(180);
+        nameCol.setMinWidth(120);
 
         TableColumn<Job, Job.Status> statusCol = new TableColumn<>("Statut");
         statusCol.setCellValueFactory(c -> c.getValue().statusProperty());
@@ -1722,6 +1730,7 @@ public class App extends Application {
             }
         });
         statusCol.setPrefWidth(110);
+        statusCol.setMinWidth(90);
 
         TableColumn<Job, Number> progCol = new TableColumn<>("Progression");
         progCol.setCellValueFactory(c -> c.getValue().progressProperty());
@@ -1747,10 +1756,12 @@ public class App extends Application {
             }
         });
         progCol.setPrefWidth(180);
+        progCol.setMinWidth(110);
 
         TableColumn<Job, String> timeCol = new TableColumn<>("Durée");
         timeCol.setCellValueFactory(c -> c.getValue().elapsedTimeProperty());
         timeCol.setPrefWidth(70);
+        timeCol.setMinWidth(55);
 
         TableColumn<Job, Void> actionCol = new TableColumn<>("Actions");
         actionCol.setCellFactory(col -> new TableCell<>() {
@@ -1812,20 +1823,34 @@ public class App extends Application {
                 
                 if (status == Job.Status.EN_ATTENTE || status == Job.Status.EN_COURS) {
                     cancelBtn.setText("Annuler");
-                    fileBtn.setDisable(true);
-                    playBtn.setDisable(true);
-                    playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
+                    cancelBtn.setVisible(true);
+                    cancelBtn.setManaged(true);
+                    
+                    fileBtn.setVisible(false);
+                    fileBtn.setManaged(false);
+                    
+                    playBtn.setVisible(false);
+                    playBtn.setManaged(false);
                 } else {
                     cancelBtn.setText("Supprimer");
+                    cancelBtn.setVisible(true);
+                    cancelBtn.setManaged(true);
                     
                     if (status == Job.Status.TERMINE && currentJob.getOutput() != null && currentJob.getOutput().exists()) {
+                        fileBtn.setVisible(true);
+                        fileBtn.setManaged(true);
                         fileBtn.setDisable(false);
+                        
+                        playBtn.setVisible(true);
+                        playBtn.setManaged(true);
                         playBtn.setDisable(false);
                         playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214; -fx-font-weight: bold;");
                     } else {
-                        fileBtn.setDisable(true);
-                        playBtn.setDisable(true);
-                        playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #2b2b36; -fx-text-fill: #7a7a8a;");
+                        fileBtn.setVisible(false);
+                        fileBtn.setManaged(false);
+                        
+                        playBtn.setVisible(false);
+                        playBtn.setManaged(false);
                     }
                 }
             }
@@ -1852,6 +1877,7 @@ public class App extends Application {
             }
         });
         actionCol.setPrefWidth(210);
+        actionCol.setMinWidth(90);
 
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.getColumns().addAll(nameCol, statusCol, progCol, timeCol, actionCol);
