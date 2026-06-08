@@ -417,8 +417,10 @@ public class App extends Application {
         Scene scene = new Scene(mainRoot, 1024, 680);
         
         // Application du CSS
-        String css = getClass().getResource("/style.css").toExternalForm();
-        scene.getStylesheets().add(css);
+        java.net.URL cssUrl = getClass().getResource("/style.css");
+        if (cssUrl != null) {
+            scene.getStylesheets().add(cssUrl.toExternalForm());
+        }
         
         stage.setScene(scene);
         stage.setTitle("FFmpeg Studio 🎥");
@@ -1078,7 +1080,10 @@ public class App extends Application {
             StackPane.setMargin(controls, new Insets(0, 15, 15, 15));
 
             Scene scene = new Scene(playerLayout, 640, 420);
-            scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+            java.net.URL cssUrl = getClass().getResource("/style.css");
+            if (cssUrl != null) {
+                scene.getStylesheets().add(cssUrl.toExternalForm());
+            }
 
             // Animations d'auto-masquage des contrôles (identiques au lecteur JavaFX)
             PauseTransition idleTimeout = new PauseTransition(Duration.seconds(2.5));
@@ -1826,7 +1831,10 @@ public class App extends Application {
         if (parentStage != null) {
             dialog.initOwner(parentStage);
         }
-        dialog.getDialogPane().getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+        java.net.URL cssUrl = getClass().getResource("/style.css");
+        if (cssUrl != null) {
+            dialog.getDialogPane().getStylesheets().add(cssUrl.toExternalForm());
+        }
         dialog.getDialogPane().getStyleClass().add("card-panel");
         if (parentStage != null && parentStage.getScene() != null && 
             parentStage.getScene().getRoot().getStyleClass().contains("light-theme")) {
@@ -2819,7 +2827,10 @@ public class App extends Application {
         rootLayout.getStyleClass().add("card-panel");
 
         Scene scene = new Scene(rootLayout);
-        scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+        java.net.URL cssUrl = getClass().getResource("/style.css");
+        if (cssUrl != null) {
+            scene.getStylesheets().add(cssUrl.toExternalForm());
+        }
         
         if (parentStage != null && parentStage.getScene() != null && 
             parentStage.getScene().getRoot().getStyleClass().contains("light-theme")) {
