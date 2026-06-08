@@ -124,7 +124,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Écouter les mises à jour de flux en temps réel
   chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === "streamUpdated") {
+    if (message.action === "streamsDetected") {
+      chrome.runtime.sendMessage({ action: "getStreams" }, (response) => {
+        const streams = response ? response.streams : [];
+        renderStreams(streams);
+      });
+    } else if (message.action === "streamUpdated") {
       const items = streamList.querySelectorAll(".stream-item");
       items.forEach((item) => {
         const urlDiv = item.querySelector(".stream-url");

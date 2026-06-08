@@ -127,6 +127,14 @@ function updateStreamQuality(tabId, url, quality) {
   }
 }
 
+function notifyPopupOfStreams(tabId) {
+  chrome.runtime.sendMessage({
+    action: "streamsDetected",
+    tabId: tabId,
+    streams: detectedStreams[tabId] || []
+  }).catch(() => {});
+}
+
 function addStream(tabId, url) {
   if (!detectedStreams[tabId]) {
     detectedStreams[tabId] = [];
@@ -141,6 +149,7 @@ function addStream(tabId, url) {
       action: "streamsDetected",
       streams: detectedStreams[tabId]
     }).catch(() => {});
+    notifyPopupOfStreams(tabId);
     return;
   }
   
@@ -196,6 +205,7 @@ function addStream(tabId, url) {
         action: "streamsDetected",
         streams: detectedStreams[tabId]
       }).catch(() => {});
+      notifyPopupOfStreams(tabId);
     }
   });
 }
@@ -229,6 +239,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'loading') {
     delete detectedStreams[tabId];
     chrome.action.setBadgeText({ tabId, text: "" });
+    notifyPopupOfStreams(tabId);
   }
 });
 

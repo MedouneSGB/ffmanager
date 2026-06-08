@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FFmpeg Studio Linker",
-  "version": "1.5",
+  "version": "1.6",
   "description": "Détecte les flux vidéo et les envoie en un clic à FFmpeg Studio.",
   "permissions": [
     "webRequest",
