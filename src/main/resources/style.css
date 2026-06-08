@@ -417,3 +417,12 @@
     -fx-border-width: 1px;
     -fx-padding: 10px 15px;
 }
+
+.text-area {
+    -fx-control-inner-background: bg-primary;
+    -fx-text-fill: text-primary;
+}
+
+.text-area .content {
+    -fx-background-color: bg-primary;
+}
