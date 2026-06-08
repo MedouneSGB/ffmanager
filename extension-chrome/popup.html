@@ -124,10 +124,89 @@
       border-radius: 4px;
       background-color: rgba(0, 230, 118, 0.1);
     }
+    /* Toggle Switch & Sponsor Button Styles */
+    .switch-container {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #7a7a8a;
+      font-weight: bold;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 28px;
+      height: 16px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .switch-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #3b3b4a;
+      transition: .3s;
+    }
+    .switch-slider:before {
+      position: absolute;
+      content: "";
+      height: 10px;
+      width: 10px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+    }
+    input:checked + .switch-slider {
+      background-color: #7c4dff;
+    }
+    input:checked + .switch-slider:before {
+      transform: translateX(12px);
+    }
+    .switch-slider.round {
+      border-radius: 16px;
+    }
+    .switch-slider.round:before {
+      border-radius: 50%;
+    }
+    .btn-sponsor {
+      background-color: rgba(255, 23, 68, 0.1);
+      color: #ff1744;
+      border: 1px solid #ff1744;
+      padding: 3px 8px;
+      font-size: 10px;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background-color 0.2s, border-color 0.2s;
+    }
+    .btn-sponsor:hover {
+      background-color: rgba(255, 23, 68, 0.2);
+    }
   </style>
 </head>
 <body>
   <h3><img src="icon.png" width="20" height="20" style="border-radius: 4px;"> FFmpeg Studio Linker</h3>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 2px;">
+    <div class="switch-container">
+      <label class="switch">
+        <input type="checkbox" id="toggleExtension" checked>
+        <span class="switch-slider round"></span>
+      </label>
+      <span id="toggleStatusLabel">Extension active</span>
+    </div>
+    <button id="sponsorBtn" class="btn-sponsor">💜 Soutenir</button>
+  </div>
   <div class="stream-list" id="streamList">
     <div class="empty-state">Aucun flux détecté sur cette page.<br>Lancez une vidéo pour capturer le lien.</div>
   </div>

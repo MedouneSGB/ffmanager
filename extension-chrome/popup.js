@@ -2,9 +2,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const streamList = document.getElementById("streamList");
   const statusMsg = document.getElementById("statusMsg");
 
-  // Récupérer les flux détectés depuis background.js
-  chrome.runtime.sendMessage({ action: "getStreams" }, (response) => {
-    const streams = response ? response.streams : [];
+  const toggle = document.getElementById("toggleExtension");
+  const statusLabel = document.getElementById("toggleStatusLabel");
+  const sponsorBtn = document.getElementById("sponsorBtn");
+
+  // Rediriger vers GitHub Sponsors
+  sponsorBtn.addEventListener("click", () => {
+    chrome.tabs.create({ url: "https://github.com/sponsors/MedouneSGB" });
+  });
+
+  function renderStreams(streams) {
+    if (!toggle.checked) {
+      streamList.innerHTML = `<div class="empty-state" style="color: #7a7a8a;">L'extension est désactivée.</div>`;
+      return;
+    }
     
     if (streams && streams.length > 0) {
       streamList.innerHTML = "";
@@ -47,7 +58,36 @@ document.addEventListener("DOMContentLoaded", () => {
         item.appendChild(urlDiv);
         streamList.appendChild(item);
       });
+    } else {
+      streamList.innerHTML = `<div class="empty-state">Aucun flux détecté sur cette page.<br>Lancez une vidéo pour capturer le lien.</div>`;
     }
+  }
+
+  // Récupérer les flux détectés depuis background.js après avoir chargé l'état activé
+  chrome.storage.local.get({ enabled: true }, (result) => {
+    toggle.checked = result.enabled;
+    statusLabel.textContent = result.enabled ? "Extension active" : "Extension désactivée";
+    
+    chrome.runtime.sendMessage({ action: "getStreams" }, (response) => {
+      const streams = response ? response.streams : [];
+      renderStreams(streams);
+    });
+  });
+
+  // Écouter le changement d'état du switch
+  toggle.addEventListener("change", () => {
+    const isEnabled = toggle.checked;
+    chrome.storage.local.set({ enabled: isEnabled }, () => {
+      statusLabel.textContent = isEnabled ? "Extension active" : "Extension désactivée";
+      if (!isEnabled) {
+        renderStreams([]);
+      } else {
+        chrome.runtime.sendMessage({ action: "getStreams" }, (response) => {
+          const streams = response ? response.streams : [];
+          renderStreams(streams);
+        });
+      }
+    });
   });
 
   // Écouter les mises à jour de flux en temps réel

@@ -338,8 +338,56 @@ function getPlayerContainer(video) {
   return playerContainer;
 }
 
+let extensionEnabled = true;
+
+function checkEnabledState() {
+  chrome.storage.local.get({ enabled: true }, (result) => {
+    extensionEnabled = result.enabled;
+    if (!extensionEnabled) {
+      removeAllPanels();
+    } else {
+      scanForVideos();
+    }
+  });
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.enabled) {
+    extensionEnabled = changes.enabled.newValue;
+    if (!extensionEnabled) {
+      removeAllPanels();
+    } else {
+      scanForVideos();
+    }
+  }
+});
+
+// Appeler initialement
+checkEnabledState();
+
+function removeAllPanels() {
+  const videos = document.getElementsByTagName('video');
+  for (let i = 0; i < videos.length; i++) {
+    const video = videos[i];
+    if (video.__ffmpegPanel) {
+      if (video.__ffmpegPanel.parentElement) {
+        video.__ffmpegPanel.parentElement.removeChild(video.__ffmpegPanel);
+      }
+      delete video.__ffmpegPanel;
+    }
+  }
+  const modal = document.getElementById('ffmpeg-download-modal');
+  if (modal) {
+    document.body.removeChild(modal);
+  }
+}
+
 // Find HTML5 video players on the page and append the button to their parent wrapper
 function scanForVideos() {
+  if (!extensionEnabled) {
+    removeAllPanels();
+    return;
+  }
   injectStyles();
   const videos = document.getElementsByTagName('video');
   for (let i = 0; i < videos.length; i++) {

@@ -1,6 +1,23 @@
 // Service Worker de l'extension
 let detectedStreams = {};
 let hlsMappings = {}; // Association URL propre de variante -> Résolution (ex: "1080")
+let extensionEnabled = true;
+
+// Charge l'état initial
+chrome.storage.local.get({ enabled: true }, (result) => {
+  extensionEnabled = result.enabled;
+});
+
+// Écoute les changements pour actualiser dynamiquement l'état
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.enabled) {
+    extensionEnabled = changes.enabled.newValue;
+    if (!extensionEnabled) {
+      detectedStreams = {};
+      chrome.action.setBadgeText({ text: "" });
+    }
+  }
+});
 
 function getCleanUrl(url) {
   try {
@@ -185,6 +202,7 @@ function addStream(tabId, url) {
 
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
+    if (!extensionEnabled) return;
     const url = details.url;
     // Ignorer les segments d'init ou de flux fragmentés (ex: Twitter segments)
     if (url.includes("/avc1/") || url.includes("/mp4a/") || url.includes(".m4s") || url.includes("seg_") || url.includes("-init.mp4")) {
