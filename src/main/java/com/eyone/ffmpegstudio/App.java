@@ -93,6 +93,8 @@ public class App extends Application {
     private Stage primaryStage;
     private Stage activePlayerStage;
     private volatile boolean playerActive = false;
+    private Stage miniDownloadStage;
+    private VBox miniDownloadVBox;
 
     // Moteur de lecture : VLC/libVLC via vlcj.
     private Boolean vlcAvailable; // mémoïsé : null = pas encore testé
@@ -1870,10 +1872,20 @@ public class App extends Application {
                         
                         if (url != null && !url.isEmpty()) {
                             Platform.runLater(() -> {
+                                boolean isMainAppShowing = primaryStage != null && primaryStage.isShowing() && !primaryStage.isIconified();
+                                
                                 if (primaryStage != null) {
-                                    primaryStage.show();
-                                    primaryStage.toFront();
-                                    primaryStage.setIconified(false);
+                                    if (play || download) {
+                                        if (isMainAppShowing) {
+                                            primaryStage.show();
+                                            primaryStage.toFront();
+                                            primaryStage.setIconified(false);
+                                        }
+                                    } else {
+                                        primaryStage.show();
+                                        primaryStage.toFront();
+                                        primaryStage.setIconified(false);
+                                    }
                                 }
                                 
                                 urlSourceRadio.setSelected(true);
@@ -1903,6 +1915,10 @@ public class App extends Application {
                                     updateCustomOutputLabel(presetBox.getValue());
                                     System.out.println("[DEBUG HTTP Server] Declenchement de addJob...");
                                     addJob();
+                                    
+                                    if (!isMainAppShowing) {
+                                        showMiniDownloadPanel(primaryStage);
+                                    }
                                 } else {
                                     updateCustomOutputLabel(presetBox.getValue());
                                 }
@@ -2676,14 +2692,28 @@ public class App extends Application {
                 e.consume(); // Empêche la fermeture réelle de l'application
                 stage.hide(); // Masque simplement la fenêtre
                 
-                // Afficher une notification ballon au premier masquage
-                if (prefs.getBoolean("showTrayInfo", true)) {
-                    trayIcon.displayMessage(
-                        "FFmpeg Studio",
-                        "L'application continue de fonctionner en arrière-plan dans la barre des tâches.",
-                        java.awt.TrayIcon.MessageType.INFO
-                    );
-                    prefs.putBoolean("showTrayInfo", false); // Afficher une seule fois par session
+                // Si des téléchargements sont en cours/attente, on affiche le mini-panneau
+                boolean hasActiveJobs = false;
+                if (queue != null) {
+                    for (Job j : queue.getJobs()) {
+                        if (j.getStatus() == Job.Status.EN_ATTENTE || j.getStatus() == Job.Status.EN_COURS) {
+                            hasActiveJobs = true;
+                            break;
+                        }
+                    }
+                }
+                if (hasActiveJobs) {
+                    showMiniDownloadPanel(stage);
+                } else {
+                    // Afficher une notification ballon au premier masquage
+                    if (prefs.getBoolean("showTrayInfo", true)) {
+                        trayIcon.displayMessage(
+                            "FFmpeg Studio",
+                            "L'application continue de fonctionner en arrière-plan dans la barre des tâches.",
+                            java.awt.TrayIcon.MessageType.INFO
+                        );
+                        prefs.putBoolean("showTrayInfo", false); // Afficher une seule fois par session
+                    }
                 }
             });
             
@@ -2691,6 +2721,159 @@ public class App extends Application {
             System.err.println("Impossible d'initialiser le SystemTray : " + ex.getMessage());
             stage.setOnCloseRequest(e -> Platform.exit());
         }
+    }
+
+    private void showMiniDownloadPanel(Stage parentStage) {
+        if (miniDownloadStage != null && miniDownloadStage.isShowing()) {
+            miniDownloadStage.toFront();
+            return;
+        }
+
+        miniDownloadStage = new Stage();
+        miniDownloadStage.setTitle("Téléchargements - FFmpeg Studio");
+        try {
+            miniDownloadStage.getIcons().add(new javafx.scene.image.Image(getClass().getResourceAsStream("/icon.png")));
+        } catch (Exception e) {}
+        
+        miniDownloadStage.setResizable(false);
+        miniDownloadStage.setAlwaysOnTop(true);
+
+        miniDownloadVBox = new VBox(10);
+        miniDownloadVBox.setPadding(new Insets(15));
+
+        ScrollPane scrollPane = new ScrollPane(miniDownloadVBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPrefViewportHeight(200);
+        scrollPane.setPrefViewportWidth(400);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0;");
+
+        Runnable updateList = () -> {
+            if (miniDownloadVBox == null) return;
+            miniDownloadVBox.getChildren().clear();
+            
+            java.util.List<Job> activeJobs = new java.util.ArrayList<>();
+            for (Job j : queue.getJobs()) {
+                if (j.getStatus() == Job.Status.EN_ATTENTE || j.getStatus() == Job.Status.EN_COURS) {
+                    activeJobs.add(j);
+                }
+            }
+            
+            if (activeJobs.isEmpty() && !queue.getJobs().isEmpty()) {
+                activeJobs.add(queue.getJobs().get(queue.getJobs().size() - 1));
+            }
+
+            if (activeJobs.isEmpty()) {
+                Label emptyLabel = new Label("Aucun téléchargement actif.");
+                emptyLabel.setStyle("-fx-text-fill: text-muted; -fx-font-style: italic;");
+                miniDownloadVBox.getChildren().add(emptyLabel);
+            } else {
+                for (Job job : activeJobs) {
+                    VBox jobRow = createMiniJobRow(job);
+                    miniDownloadVBox.getChildren().add(jobRow);
+                }
+            }
+        };
+
+        javafx.collections.ListChangeListener<Job> queueListener = change -> Platform.runLater(updateList);
+        queue.getJobs().addListener(queueListener);
+
+        miniDownloadStage.setOnCloseRequest(e -> {
+            queue.getJobs().removeListener(queueListener);
+            miniDownloadStage = null;
+            miniDownloadVBox = null;
+        });
+
+        Button openMainBtn = new Button("Ouvrir FFmpeg Studio");
+        openMainBtn.getStyleClass().add("btn-secondary");
+        openMainBtn.setMaxWidth(Double.MAX_VALUE);
+        openMainBtn.setOnAction(e -> {
+            if (primaryStage != null) {
+                primaryStage.show();
+                primaryStage.toFront();
+                primaryStage.setIconified(false);
+            }
+            miniDownloadStage.close();
+        });
+
+        VBox rootLayout = new VBox(15, scrollPane, openMainBtn);
+        rootLayout.setPadding(new Insets(15));
+        rootLayout.getStyleClass().add("card-panel");
+
+        Scene scene = new Scene(rootLayout);
+        scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+        
+        if (parentStage != null && parentStage.getScene() != null && 
+            parentStage.getScene().getRoot().getStyleClass().contains("light-theme")) {
+            rootLayout.getStyleClass().add("light-theme");
+        }
+
+        miniDownloadStage.setScene(scene);
+        updateList.run();
+        miniDownloadStage.show();
+    }
+
+    private VBox createMiniJobRow(Job job) {
+        Label nameLabel = new Label(job.getOutput().getName());
+        nameLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: text-primary;");
+        nameLabel.setWrapText(true);
+
+        ProgressBar bar = new ProgressBar(0);
+        bar.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(bar, Priority.ALWAYS);
+        bar.progressProperty().bind(job.progressProperty());
+
+        Label pctLabel = new Label("0%");
+        pctLabel.setStyle("-fx-text-fill: text-secondary; -fx-font-family: monospace;");
+        pctLabel.setMinWidth(40);
+        pctLabel.setAlignment(Pos.CENTER_RIGHT);
+        job.progressProperty().addListener((obs, oldVal, newVal) -> {
+            Platform.runLater(() -> {
+                pctLabel.setText(String.format("%.0f%%", newVal.doubleValue() * 100));
+            });
+        });
+        pctLabel.setText(String.format("%.0f%%", job.progressProperty().get() * 100));
+
+        HBox progressRow = new HBox(10, bar, pctLabel);
+        progressRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label statusLabel = new Label();
+        statusLabel.setStyle("-fx-font-size: 11px;");
+        
+        Button actionBtn = new Button("Annuler");
+        actionBtn.setStyle("-fx-font-size: 11px; -fx-padding: 4 8;");
+        actionBtn.getStyleClass().add("btn-secondary");
+
+        Runnable updateStatusUI = () -> {
+            Job.Status s = job.getStatus();
+            statusLabel.setText(switch (s) {
+                case EN_ATTENTE -> "En attente...";
+                case EN_COURS -> "En cours...";
+                case TERMINE -> "Terminé ✅";
+                case ECHEC -> "Échec ❌";
+                case ANNULE -> "Annulé ⏹";
+            });
+            if (s == Job.Status.EN_ATTENTE || s == Job.Status.EN_COURS) {
+                actionBtn.setText("Annuler");
+                actionBtn.setDisable(false);
+                actionBtn.setOnAction(e -> queue.cancel(job));
+            } else {
+                actionBtn.setText("Supprimer");
+                actionBtn.setOnAction(e -> {
+                    queue.getJobs().remove(job);
+                });
+            }
+        };
+
+        job.statusProperty().addListener((obs, oldVal, newVal) -> Platform.runLater(updateStatusUI));
+        updateStatusUI.run();
+
+        HBox footerRow = new HBox(10, statusLabel, new Pane(), actionBtn);
+        HBox.setHgrow(footerRow.getChildren().get(1), Priority.ALWAYS);
+        footerRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox row = new VBox(5, nameLabel, progressRow, footerRow);
+        row.setStyle("-fx-border-color: border-color; -fx-border-width: 0 0 1 0; -fx-padding: 0 0 10 0;");
+        return row;
     }
 
     private boolean extractPlayFromJson(String json) {
