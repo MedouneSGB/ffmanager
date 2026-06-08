@@ -6,7 +6,7 @@
 
     <groupId>com.eyone</groupId>
     <artifactId>ffmpeg-studio</artifactId>
-    <version>0.2.20</version>
+    <version>0.2.21</version>
     <packaging>jar</packaging>
 
     <name>FFmpeg Studio</name>

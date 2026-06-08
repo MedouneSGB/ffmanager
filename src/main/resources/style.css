@@ -288,7 +288,7 @@
 /* Badges de Statut (Chips) */
 .badge {
     -fx-background-radius: 12px;
-    -fx-padding: 3px 10px;
+    -fx-padding: 3px 6px;
     -fx-font-weight: bold;
     -fx-font-size: 11px;
     -fx-text-fill: #ffffff;
