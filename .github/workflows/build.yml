@@ -1,4 +1,4 @@
-name: Build JavaFX Application (Windows & macOS)
+name: Build JavaFX Application (Windows, macOS & Linux)
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -94,6 +94,22 @@ jobs:
         hdiutil detach /Volumes/VLCRT -quiet || true
         ls -la target/input-jar/vlc/ || true
 
+    # Sous Linux on installe VLC via apt puis on copie libvlc + ses plugins.
+    # Au runtime, App.java positionne VLC_PLUGIN_PATH (via libc setenv/JNA) car
+    # libVLC ne retrouve pas ses plugins relocalises automatiquement sous Linux.
+    - name: Download & Bundle VLC runtime (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y vlc libvlc-dev
+        ARCHLIB=/usr/lib/x86_64-linux-gnu
+        mkdir -p target/input-jar/vlc
+        cp -L $ARCHLIB/libvlc.so*     target/input-jar/vlc/ 2>/dev/null || true
+        cp -L $ARCHLIB/libvlccore.so* target/input-jar/vlc/ 2>/dev/null || true
+        cp -rL $ARCHLIB/vlc/plugins   target/input-jar/vlc/plugins
+        ls -la target/input-jar/vlc/
+
     # Etape de conversion de l'icone PNG en format ICNS sous macOS
     - name: Convert PNG to ICNS (macOS)
       if: matrix.os == 'macos-latest'
@@ -136,6 +152,18 @@ jobs:
                  --icon src/main/resources/icon.icns
       shell: bash
 
+    - name: Create Portable App Image (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        jpackage --input target/input-jar/ \
+                 --dest target/dist-portable/ \
+                 --name "FFmpegStudio" \
+                 --main-jar ffmpeg-studio-${{ steps.get_version.outputs.version }}.jar \
+                 --main-class com.eyone.ffmpegstudio.Launcher \
+                 --type app-image \
+                 --icon src/main/resources/icon.png
+      shell: bash
+
     - name: Copy Chrome Extension & Zip Portable (Windows)
       if: matrix.os == 'windows-latest'
       run: |
@@ -151,6 +179,14 @@ jobs:
         cp -r extension-chrome target/dist-portable-mac/
         cd target/dist-portable-mac
         zip -r ../FFmpegStudio-Portable-macOS.zip *
+      shell: bash
+
+    - name: Copy Chrome Extension & Tar Portable (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cp -r extension-chrome target/dist-portable/FFmpegStudio/extension-chrome
+        cd target/dist-portable
+        tar -czf ../FFmpegStudio-Portable-Linux.tar.gz FFmpegStudio
       shell: bash
 
     - name: Build Standalone EXE Installer (Windows)
@@ -173,6 +209,18 @@ jobs:
                  --dest target/dist-installer/ \
                  --name "FFmpegStudio" \
                  --type dmg \
+                 --vendor "FFmpeg Studio" \
+                 --app-version "${{ steps.get_version.outputs.version }}"
+      shell: bash
+
+    - name: Build Standalone DEB Installer (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        jpackage --app-image target/dist-portable/FFmpegStudio \
+                 --dest target/dist-installer/ \
+                 --name "FFmpegStudio" \
+                 --type deb \
+                 --linux-shortcut \
                  --vendor "FFmpeg Studio" \
                  --app-version "${{ steps.get_version.outputs.version }}"
       shell: bash
@@ -211,6 +259,20 @@ jobs:
         name: ffmpeg-studio-installer-macos
         path: target/dist-installer/*.dmg
 
+    - name: Upload Portable Linux Tarball Artifact
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-studio-portable-linux
+        path: target/FFmpegStudio-Portable-Linux.tar.gz
+
+    - name: Upload DEB Installer Artifact
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-studio-installer-linux
+        path: target/dist-installer/*.deb
+
   release:
     name: Create GitHub Release
     needs: build
@@ -228,7 +290,7 @@ jobs:
       run: |
         mkdir -p deploy
         # Copy ZIP, EXE, and DMG files to the deploy directory
-        find release-artifacts/ -type f \( -name "*.zip" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} deploy/ \;
+        find release-artifacts/ -type f \( -name "*.zip" -o -name "*.exe" -o -name "*.dmg" -o -name "*.deb" -o -name "*.tar.gz" \) -exec cp {} deploy/ \;
         ls -la deploy/
 
     - name: Create GitHub Release
