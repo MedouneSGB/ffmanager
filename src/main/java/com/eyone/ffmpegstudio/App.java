@@ -1663,6 +1663,13 @@ public class App extends Application {
                 fileBtn.setTooltip(new Tooltip("Afficher le dossier du fichier"));
                 playBtn.setTooltip(new Tooltip("Lire le fichier"));
                 
+                // Adapter dynamiquement le texte/icones selon la largeur disponible
+                widthProperty().addListener((obs, oldVal, newVal) -> {
+                    if (currentJob != null) {
+                        updateButtons(currentJob.getStatus());
+                    }
+                });
+                
                 cancelBtn.setOnAction(e -> {
                     if (currentJob != null) {
                         if (currentJob.getStatus() == Job.Status.EN_ATTENTE || currentJob.getStatus() == Job.Status.EN_COURS) {
@@ -1698,8 +1705,10 @@ public class App extends Application {
             private void updateButtons(Job.Status status) {
                 if (currentJob == null) return;
                 
+                boolean useShort = getWidth() < 185;
+                
                 if (status == Job.Status.EN_ATTENTE || status == Job.Status.EN_COURS) {
-                    cancelBtn.setText("❌");
+                    cancelBtn.setText(useShort ? "❌" : "❌ Annuler");
                     cancelBtn.setTooltip(new Tooltip("Annuler la tâche"));
                     cancelBtn.setVisible(true);
                     cancelBtn.setManaged(true);
@@ -1710,7 +1719,7 @@ public class App extends Application {
                     playBtn.setVisible(false);
                     playBtn.setManaged(false);
                 } else {
-                    cancelBtn.setText("🗑");
+                    cancelBtn.setText(useShort ? "🗑" : "🗑 Supprimer");
                     cancelBtn.setTooltip(new Tooltip("Supprimer de la file"));
                     cancelBtn.setVisible(true);
                     cancelBtn.setManaged(true);
@@ -1719,11 +1728,12 @@ public class App extends Application {
                         fileBtn.setVisible(true);
                         fileBtn.setManaged(true);
                         fileBtn.setDisable(false);
+                        fileBtn.setText(useShort ? "📂" : "📂 Dossier");
                         
                         playBtn.setVisible(true);
                         playBtn.setManaged(true);
                         playBtn.setDisable(false);
-                        playBtn.setText("▶");
+                        playBtn.setText(useShort ? "▶" : "▶ Lire");
                         playBtn.setTooltip(new Tooltip("Lire le fichier"));
                         playBtn.setStyle("-fx-padding: 4px 8px; -fx-font-size: 11px; -fx-background-color: #00e676; -fx-text-fill: #121214; -fx-font-weight: bold;");
                     } else {
