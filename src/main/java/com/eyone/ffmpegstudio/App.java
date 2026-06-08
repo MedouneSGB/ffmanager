@@ -2739,12 +2739,12 @@ public class App extends Application {
         miniDownloadStage.setAlwaysOnTop(true);
 
         miniDownloadVBox = new VBox(10);
-        miniDownloadVBox.setPadding(new Insets(15));
+        miniDownloadVBox.setPadding(new Insets(0, 5, 0, 5));
 
         ScrollPane scrollPane = new ScrollPane(miniDownloadVBox);
         scrollPane.setFitToWidth(true);
-        scrollPane.setPrefViewportHeight(200);
-        scrollPane.setPrefViewportWidth(400);
+        scrollPane.setPrefViewportHeight(95);
+        scrollPane.setPrefViewportWidth(380);
         scrollPane.setStyle("-fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0;");
 
         Runnable updateList = () -> {
@@ -2764,7 +2764,7 @@ public class App extends Application {
 
             if (activeJobs.isEmpty()) {
                 Label emptyLabel = new Label("Aucun téléchargement actif.");
-                emptyLabel.setStyle("-fx-text-fill: text-muted; -fx-font-style: italic;");
+                emptyLabel.setStyle("-fx-text-fill: text-muted; -fx-font-style: italic; -fx-font-size: 11px;");
                 miniDownloadVBox.getChildren().add(emptyLabel);
             } else {
                 for (Job job : activeJobs) {
@@ -2786,6 +2786,7 @@ public class App extends Application {
         Button openMainBtn = new Button("Ouvrir FFmpeg Studio");
         openMainBtn.getStyleClass().add("btn-secondary");
         openMainBtn.setMaxWidth(Double.MAX_VALUE);
+        openMainBtn.setStyle("-fx-font-size: 12px; -fx-padding: 6 12;");
         openMainBtn.setOnAction(e -> {
             if (primaryStage != null) {
                 primaryStage.show();
@@ -2795,8 +2796,8 @@ public class App extends Application {
             miniDownloadStage.close();
         });
 
-        VBox rootLayout = new VBox(15, scrollPane, openMainBtn);
-        rootLayout.setPadding(new Insets(15));
+        VBox rootLayout = new VBox(10, scrollPane, openMainBtn);
+        rootLayout.setPadding(new Insets(10));
         rootLayout.getStyleClass().add("card-panel");
 
         Scene scene = new Scene(rootLayout);
@@ -2814,7 +2815,7 @@ public class App extends Application {
 
     private VBox createMiniJobRow(Job job) {
         Label nameLabel = new Label(job.getOutput().getName());
-        nameLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: text-primary;");
+        nameLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: text-primary; -fx-font-size: 12px;");
         nameLabel.setWrapText(true);
 
         ProgressBar bar = new ProgressBar(0);
@@ -2823,7 +2824,7 @@ public class App extends Application {
         bar.progressProperty().bind(job.progressProperty());
 
         Label pctLabel = new Label("0%");
-        pctLabel.setStyle("-fx-text-fill: text-secondary; -fx-font-family: monospace;");
+        pctLabel.setStyle("-fx-text-fill: text-secondary; -fx-font-family: monospace; -fx-font-size: 11px;");
         pctLabel.setMinWidth(40);
         pctLabel.setAlignment(Pos.CENTER_RIGHT);
         job.progressProperty().addListener((obs, oldVal, newVal) -> {
@@ -2837,10 +2838,10 @@ public class App extends Application {
         progressRow.setAlignment(Pos.CENTER_LEFT);
 
         Label statusLabel = new Label();
-        statusLabel.setStyle("-fx-font-size: 11px;");
+        statusLabel.setStyle("-fx-font-size: 10px;");
         
         Button actionBtn = new Button("Annuler");
-        actionBtn.setStyle("-fx-font-size: 11px; -fx-padding: 4 8;");
+        actionBtn.setStyle("-fx-font-size: 10px; -fx-padding: 3 6;");
         actionBtn.getStyleClass().add("btn-secondary");
 
         Runnable updateStatusUI = () -> {
@@ -2872,7 +2873,7 @@ public class App extends Application {
         footerRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox row = new VBox(5, nameLabel, progressRow, footerRow);
-        row.setStyle("-fx-border-color: border-color; -fx-border-width: 0 0 1 0; -fx-padding: 0 0 10 0;");
+        row.setStyle("-fx-border-color: border-color; -fx-border-width: 0 0 1 0; -fx-padding: 0 0 5 0;");
         return row;
     }
 
