@@ -630,6 +630,22 @@ public class App extends Application {
                 // plugins/) sont résolus automatiquement par libVLC.
                 System.setProperty("jna.library.path", bundled.getAbsolutePath());
                 com.sun.jna.NativeLibrary.addSearchPath("libvlc", bundled.getAbsolutePath());
+
+                // Sous Linux, libVLC ne retrouve pas ses plugins relocalisés : il faut
+                // pointer VLC_PLUGIN_PATH vers le dossier plugins/ embarqué. On positionne
+                // la variable d'environnement réelle du process via setenv() de la libc
+                // (JNA), car libVLC (code C) la lit avec getenv() — un System.setProperty
+                // ne serait pas visible côté natif.
+                if (System.getProperty("os.name").toLowerCase().contains("nux")) {
+                    try {
+                        File plugins = new File(bundled, "plugins");
+                        if (plugins.isDirectory()) {
+                            PosixCLib.INSTANCE.setenv("VLC_PLUGIN_PATH", plugins.getAbsolutePath(), 1);
+                        }
+                    } catch (Throwable t) {
+                        System.err.println("[VLC] Impossible de définir VLC_PLUGIN_PATH : " + t.getMessage());
+                    }
+                }
             }
             vlcAvailable = new NativeDiscovery().discover();
             if (!vlcAvailable) {
@@ -640,6 +656,12 @@ public class App extends Application {
             vlcAvailable = false;
         }
         return vlcAvailable;
+    }
+
+    /** Accès à setenv() de la libc POSIX (Linux/macOS) pour définir VLC_PLUGIN_PATH côté natif. */
+    private interface PosixCLib extends com.sun.jna.Library {
+        PosixCLib INSTANCE = com.sun.jna.Native.load("c", PosixCLib.class);
+        int setenv(String name, String value, int overwrite);
     }
 
     private String sanitizePath(String path) {
