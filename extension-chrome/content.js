@@ -370,12 +370,15 @@ function removeAllPanels() {
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
     if (video.__ffmpegPanel) {
-      if (video.__ffmpegPanel.parentElement) {
-        video.__ffmpegPanel.parentElement.removeChild(video.__ffmpegPanel);
-      }
       delete video.__ffmpegPanel;
     }
   }
+  const panels = document.querySelectorAll('.ffmpeg-float-panel');
+  panels.forEach((panel) => {
+    if (panel.parentElement) {
+      panel.parentElement.removeChild(panel);
+    }
+  });
   const modal = document.getElementById('ffmpeg-download-modal');
   if (modal) {
     document.body.removeChild(modal);
