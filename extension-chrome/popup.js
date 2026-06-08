@@ -11,6 +11,17 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.tabs.create({ url: "https://github.com/sponsors/MedouneSGB" });
   });
 
+  const refreshPageBtnInit = document.getElementById("refreshPageBtn");
+  if (refreshPageBtnInit) {
+    refreshPageBtnInit.addEventListener("click", () => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0] && tabs[0].id) {
+          chrome.tabs.reload(tabs[0].id);
+        }
+      });
+    });
+  }
+
   function renderStreams(streams) {
     if (!toggle.checked) {
       streamList.innerHTML = `<div class="empty-state" style="color: #7a7a8a;">L'extension est désactivée.</div>`;
@@ -59,7 +70,28 @@ document.addEventListener("DOMContentLoaded", () => {
         streamList.appendChild(item);
       });
     } else {
-      streamList.innerHTML = `<div class="empty-state">Aucun flux détecté sur cette page.<br>Lancez une vidéo pour capturer le lien.</div>`;
+      streamList.innerHTML = `
+        <div class="empty-state">
+          Aucun flux détecté sur cette page.<br>Lancez une vidéo pour capturer le lien.
+          <button id="refreshPageBtn" class="btn" style="margin-top: 14px; background-color: rgba(124, 77, 255, 0.1); border: 1px solid #7c4dff; color: #9e7dff; padding: 8px 16px; font-size: 11px; width: 100%; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.2s; cursor: pointer;">🔄 Rafraîchir la page</button>
+        </div>
+      `;
+      const refreshBtn = document.getElementById("refreshPageBtn");
+      if (refreshBtn) {
+        refreshBtn.addEventListener("click", () => {
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0] && tabs[0].id) {
+              chrome.tabs.reload(tabs[0].id);
+            }
+          });
+        });
+        refreshBtn.addEventListener("mouseenter", () => {
+          refreshBtn.style.backgroundColor = "rgba(124, 77, 255, 0.2)";
+        });
+        refreshBtn.addEventListener("mouseleave", () => {
+          refreshBtn.style.backgroundColor = "rgba(124, 77, 255, 0.1)";
+        });
+      }
     }
   }
 
