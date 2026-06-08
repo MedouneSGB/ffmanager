@@ -1,0 +1,8 @@
+# Active le bouton « Sponsor » sur la page GitHub du dépôt.
+# Nécessite d'avoir activé GitHub Sponsors sur le compte (https://github.com/sponsors).
+github: [MedouneSGB]
+
+# Autres plateformes possibles (décommenter et renseigner si besoin) :
+# ko_fi: votre_pseudo
+# buy_me_a_coffee: votre_pseudo
+# custom: ["https://www.paypal.me/votre_pseudo"]

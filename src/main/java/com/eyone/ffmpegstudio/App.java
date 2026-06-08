@@ -54,6 +54,9 @@ import java.util.stream.Collectors;
  */
 public class App extends Application {
 
+    /** Page de soutien (GitHub Sponsors). */
+    private static final String SPONSOR_URL = "https://github.com/sponsors/MedouneSGB";
+
     private final Preferences prefs = Preferences.userNodeForPackage(App.class);
     private java.awt.TrayIcon trayIcon;
     private String ffmpegPath;
@@ -164,8 +167,13 @@ public class App extends Application {
         Button logsBtn = new Button("Logs 📋");
         logsBtn.getStyleClass().add("btn-secondary");
         logsBtn.setOnAction(e -> openLogFile());
-        
-        HBox statusBox = new HBox(12, ffmpegStatusLabel, themeToggleBtn, logsBtn, configBtn);
+
+        Button sponsorBtn = new Button("💜 Soutenir");
+        sponsorBtn.getStyleClass().add("btn-secondary");
+        sponsorBtn.setTooltip(new Tooltip("Soutenir le développement de FFmpeg Studio"));
+        sponsorBtn.setOnAction(e -> openUrl(SPONSOR_URL, stage));
+
+        HBox statusBox = new HBox(12, ffmpegStatusLabel, sponsorBtn, themeToggleBtn, logsBtn, configBtn);
         statusBox.setAlignment(Pos.CENTER_RIGHT);
         
         BorderPane header = new BorderPane();
@@ -630,6 +638,22 @@ public class App extends Application {
                 // plugins/) sont résolus automatiquement par libVLC.
                 System.setProperty("jna.library.path", bundled.getAbsolutePath());
                 com.sun.jna.NativeLibrary.addSearchPath("libvlc", bundled.getAbsolutePath());
+
+                // Sous Linux, libVLC ne retrouve pas ses plugins relocalisés : il faut
+                // pointer VLC_PLUGIN_PATH vers le dossier plugins/ embarqué. On positionne
+                // la variable d'environnement réelle du process via setenv() de la libc
+                // (JNA), car libVLC (code C) la lit avec getenv() — un System.setProperty
+                // ne serait pas visible côté natif.
+                if (System.getProperty("os.name").toLowerCase().contains("nux")) {
+                    try {
+                        File plugins = new File(bundled, "plugins");
+                        if (plugins.isDirectory()) {
+                            PosixCLib.INSTANCE.setenv("VLC_PLUGIN_PATH", plugins.getAbsolutePath(), 1);
+                        }
+                    } catch (Throwable t) {
+                        System.err.println("[VLC] Impossible de définir VLC_PLUGIN_PATH : " + t.getMessage());
+                    }
+                }
             }
             vlcAvailable = new NativeDiscovery().discover();
             if (!vlcAvailable) {
@@ -640,6 +664,12 @@ public class App extends Application {
             vlcAvailable = false;
         }
         return vlcAvailable;
+    }
+
+    /** Accès à setenv() de la libc POSIX (Linux/macOS) pour définir VLC_PLUGIN_PATH côté natif. */
+    private interface PosixCLib extends com.sun.jna.Library {
+        PosixCLib INSTANCE = com.sun.jna.Native.load("c", PosixCLib.class);
+        int setenv(String name, String value, int overwrite);
     }
 
     private String sanitizePath(String path) {
@@ -2941,6 +2971,31 @@ public class App extends Application {
             // Le port est libre ou l'instance n'a pas répondu
         }
         return false;
+    }
+
+    /** Ouvre une URL dans le navigateur par défaut (HostServices JavaFX, repli java.awt.Desktop). */
+    private void openUrl(String url, Stage parentStage) {
+        try {
+            getHostServices().showDocument(url);
+        } catch (Throwable primary) {
+            try {
+                if (java.awt.Desktop.isDesktopSupported()) {
+                    java.awt.Desktop.getDesktop().browse(java.net.URI.create(url));
+                    return;
+                }
+                throw primary;
+            } catch (Throwable fallback) {
+                System.err.println("[Soutenir] Impossible d'ouvrir l'URL : " + fallback.getMessage());
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Soutenir FFmpeg Studio");
+                    alert.setHeaderText("Ouvrez ce lien dans votre navigateur :");
+                    alert.setContentText(url);
+                    styleDialog(alert, parentStage);
+                    alert.showAndWait();
+                });
+            }
+        }
     }
 
     private void openLogFile() {
