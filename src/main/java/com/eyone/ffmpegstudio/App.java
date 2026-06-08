@@ -2852,6 +2852,34 @@ public class App extends Application {
         actionBtn.setStyle("-fx-font-size: 10px; -fx-padding: 3 6;");
         actionBtn.getStyleClass().add("btn-secondary");
 
+        Button fileBtn = new Button("📂");
+        fileBtn.setStyle("-fx-font-size: 10px; -fx-padding: 3 6;");
+        fileBtn.getStyleClass().add("btn-secondary");
+        fileBtn.setTooltip(new Tooltip("Afficher le dossier du fichier"));
+        fileBtn.setOnAction(e -> {
+            if (job.getOutput() != null) {
+                File outFile = job.getOutput();
+                try {
+                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                        new ProcessBuilder("explorer.exe", "/select,", outFile.getAbsolutePath()).start();
+                    } else {
+                        java.awt.Desktop.getDesktop().open(outFile.getParentFile());
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+
+        Button playBtn = new Button("▶");
+        playBtn.setStyle("-fx-font-size: 10px; -fx-padding: 3 6; -fx-background-color: #00e676; -fx-text-fill: #121214; -fx-font-weight: bold;");
+        playBtn.setTooltip(new Tooltip("Lire le fichier"));
+        playBtn.setOnAction(e -> {
+            if (job.getOutput() != null) {
+                playMedia(job.getOutput().getAbsolutePath(), primaryStage);
+            }
+        });
+
         Runnable updateStatusUI = () -> {
             Job.Status s = job.getStatus();
             statusLabel.setText(switch (s) {
@@ -2865,18 +2893,33 @@ public class App extends Application {
                 actionBtn.setText("Annuler");
                 actionBtn.setDisable(false);
                 actionBtn.setOnAction(e -> queue.cancel(job));
+                fileBtn.setVisible(false);
+                fileBtn.setManaged(false);
+                playBtn.setVisible(false);
+                playBtn.setManaged(false);
             } else {
                 actionBtn.setText("Supprimer");
                 actionBtn.setOnAction(e -> {
                     queue.getJobs().remove(job);
                 });
+                if (s == Job.Status.TERMINE && job.getOutput() != null && job.getOutput().exists()) {
+                    fileBtn.setVisible(true);
+                    fileBtn.setManaged(true);
+                    playBtn.setVisible(true);
+                    playBtn.setManaged(true);
+                } else {
+                    fileBtn.setVisible(false);
+                    fileBtn.setManaged(false);
+                    playBtn.setVisible(false);
+                    playBtn.setManaged(false);
+                }
             }
         };
 
         job.statusProperty().addListener((obs, oldVal, newVal) -> Platform.runLater(updateStatusUI));
         updateStatusUI.run();
 
-        HBox footerRow = new HBox(10, statusLabel, new Pane(), actionBtn);
+        HBox footerRow = new HBox(6, statusLabel, new Pane(), fileBtn, playBtn, actionBtn);
         HBox.setHgrow(footerRow.getChildren().get(1), Priority.ALWAYS);
         footerRow.setAlignment(Pos.CENTER_LEFT);
 
