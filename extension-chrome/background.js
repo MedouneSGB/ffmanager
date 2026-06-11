@@ -69,10 +69,12 @@ function guessResolutionFromUrl(url) {
 function isLinkedInVideoUrl(url) {
   if (!url.includes("licdn.com/")) return false;
   if (url.includes("/image/") || url.includes("/videocover") || url.includes("/document/")) return false;
+  if (url.includes("caption") || url.includes("webvtt") || url.includes("subtitle") || url.includes("/srt-")) return false;
   
   const hasVideoKeywords = url.includes("/playlist/") || url.includes("/playback/") || url.includes("/vid/") || url.includes("/video/");
-  const isManifestOrProgressive = url.includes("/0/");
-  return hasVideoKeywords && isManifestOrProgressive;
+  const isPlaylist = url.includes("/pl/") || url.includes("/playlist/");
+  const isProgressiveOrManifest = url.includes("/0/");
+  return hasVideoKeywords && (isPlaylist || isProgressiveOrManifest);
 }
 
 function getLinkedInVideoQuality(url) {
@@ -287,6 +289,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       return true; // Garder la communication ouverte pour la réponse asynchrone
     }
+  } else if (message.action === "addDetectedStreamFromDOM") {
+    const tabId = (sender && sender.tab) ? sender.tab.id : null;
+    if (tabId !== null) {
+      addStream(tabId, message.url);
+    }
+    sendResponse({ status: "ok" });
+    return true;
   } else if (message.action === "sendToApp") {
     fetch("http://localhost:8555/add-stream", {
       method: "POST",

@@ -392,6 +392,30 @@ function removeAllPanels() {
   }
 }
 
+function scanForDataSources() {
+  const elements = document.querySelectorAll('[data-sources]');
+  elements.forEach(el => {
+    try {
+      const dataSourcesStr = el.getAttribute('data-sources');
+      if (dataSourcesStr) {
+        const sources = JSON.parse(dataSourcesStr);
+        if (Array.isArray(sources)) {
+          sources.forEach(source => {
+            if (source.src) {
+              chrome.runtime.sendMessage({
+                action: "addDetectedStreamFromDOM",
+                url: source.src
+              }).catch(() => {});
+            }
+          });
+        }
+      }
+    } catch (e) {
+      // Ignorer
+    }
+  });
+}
+
 // Find HTML5 video players on the page and append the button to their parent wrapper
 function scanForVideos() {
   if (!extensionEnabled) {
@@ -399,6 +423,7 @@ function scanForVideos() {
     return;
   }
   injectStyles();
+  scanForDataSources();
   const videos = document.getElementsByTagName('video');
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
