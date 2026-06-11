@@ -71,10 +71,8 @@ function isLinkedInVideoUrl(url) {
   if (url.includes("/image/") || url.includes("/videocover") || url.includes("/document/")) return false;
   if (url.includes("caption") || url.includes("webvtt") || url.includes("subtitle") || url.includes("/srt-")) return false;
   
-  const hasVideoKeywords = url.includes("/playlist/") || url.includes("/playback/") || url.includes("/vid/") || url.includes("/video/");
-  const isPlaylist = url.includes("/pl/") || url.includes("/playlist/");
-  const isProgressiveOrManifest = url.includes("/0/");
-  return hasVideoKeywords && (isPlaylist || isProgressiveOrManifest);
+  // Soit c'est une playlist HLS (contenant /pl/), soit c'est une vidéo progressive/manifeste (contenant /v2/ et /0/)
+  return url.includes("/pl/") || (url.includes("/v2/") && url.includes("/0/"));
 }
 
 function getLinkedInVideoQuality(url) {
