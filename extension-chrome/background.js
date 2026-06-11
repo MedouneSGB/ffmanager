@@ -33,7 +33,8 @@ function getDeduplicationKey(url) {
     const urlObj = new URL(url);
     const pathname = urlObj.pathname.toLowerCase();
     if (pathname.endsWith('.m3u8') || pathname.endsWith('.mp4') || pathname.endsWith('.mpd') || pathname.endsWith('.webm') ||
-        pathname.includes('.m3u8/') || pathname.includes('.mp4/') || pathname.includes('.mpd/') || pathname.includes('.webm/')) {
+        pathname.includes('.m3u8/') || pathname.includes('.mp4/') || pathname.includes('.mpd/') || pathname.includes('.webm/') ||
+        url.includes("licdn.com/")) {
       return urlObj.origin + urlObj.pathname;
     }
   } catch (e) {
@@ -63,6 +64,24 @@ function guessResolutionFromUrl(url) {
     }
   }
   return null;
+}
+
+function isLinkedInVideoUrl(url) {
+  if (!url.includes("licdn.com/")) return false;
+  if (url.includes("/image/") || url.includes("/videocover") || url.includes("/document/")) return false;
+  
+  const hasVideoKeywords = url.includes("/playlist/") || url.includes("/playback/") || url.includes("/vid/") || url.includes("/video/");
+  const isManifestOrProgressive = url.includes("/0/");
+  return hasVideoKeywords && isManifestOrProgressive;
+}
+
+function getLinkedInVideoQuality(url) {
+  const resMatch = url.match(/(?:hls|mp4)-(?:av1-)?(\d{3,4})p/);
+  if (resMatch) {
+    const res = resMatch[1];
+    return url.includes("/hls-") ? `Flux HLS - ${res}` : `${res}p`;
+  }
+  return url.includes("/hls-") ? "Flux HLS" : "Direct MP4";
 }
 
 async function checkAndParseMasterPlaylist(masterUrl, tabId) {
@@ -172,13 +191,15 @@ function addStream(tabId, url) {
     } else {
       quality = "Flux DASH";
     }
+  } else if (isLinkedInVideoUrl(url)) {
+    quality = getLinkedInVideoQuality(url);
   } else {
     const guessedRes = guessResolutionFromUrl(url);
     if (guessedRes) {
       quality = `${guessedRes}p`;
-    } else if (url.endsWith(".mp4")) {
+    } else if (url.endsWith(".mp4") || url.includes("/mp4-")) {
       quality = "Direct MP4";
-    } else if (url.endsWith(".webm")) {
+    } else if (url.endsWith(".webm") || url.includes("/webm-")) {
       quality = "Direct WebM";
     }
   }
@@ -218,13 +239,15 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (url.includes("/avc1/") || url.includes("/mp4a/") || url.includes(".m4s") || url.includes("seg_") || url.includes("-init.mp4")) {
       return;
     }
-    // Filtrage des flux vidéo ou fichiers multimédias (.m3u8, .mp4, .mpd, .webm)
-    if (url.includes(".m3u8") || url.includes(".mp4") || url.includes(".mpd") || url.includes(".webm")) {
+    // Filtrage des flux vidéo ou fichiers multimédias (.m3u8, .mp4, .mpd, .webm, ou vidéo LinkedIn)
+    const isLinkedIn = isLinkedInVideoUrl(url);
+    if (url.includes(".m3u8") || url.includes(".mp4") || url.includes(".mpd") || url.includes(".webm") || isLinkedIn) {
       const tabId = details.tabId;
       if (tabId < 0) return;
       
       // Si c'est du HLS, lancer l'analyse en arrière-plan
-      if (url.includes(".m3u8") && !hlsMappings[getCleanUrl(url)]) {
+      const isHls = url.includes(".m3u8") || (isLinkedIn && getLinkedInVideoQuality(url).startsWith("Flux HLS"));
+      if (isHls && !hlsMappings[getCleanUrl(url)]) {
         checkAndParseMasterPlaylist(url, tabId);
       }
       
