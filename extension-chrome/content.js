@@ -283,8 +283,15 @@ function updateDropdown(dropdown) {
 }
 
 function updateAllPanels() {
-  const panels = document.querySelectorAll('.ffmpeg-dropdown-menu');
-  panels.forEach(updateDropdown);
+  const panels = document.querySelectorAll('.ffmpeg-float-panel');
+  const show = (detectedStreams && detectedStreams.length > 0);
+  panels.forEach(panel => {
+    panel.style.display = show ? 'block' : 'none';
+    const dropdown = panel.querySelector('.ffmpeg-dropdown-menu');
+    if (dropdown) {
+      updateDropdown(dropdown);
+    }
+  });
 }
 
 // Create overlay buttons on videos
@@ -426,6 +433,9 @@ function scanForVideos() {
         targetParent.appendChild(panel);
       }
     }
+    
+    const show = (detectedStreams && detectedStreams.length > 0);
+    panel.style.display = show ? 'block' : 'none';
   }
 }
 
