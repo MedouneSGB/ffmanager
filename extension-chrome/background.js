@@ -71,8 +71,13 @@ function isLinkedInVideoUrl(url) {
   if (url.includes("/image/") || url.includes("/videocover") || url.includes("/document/")) return false;
   if (url.includes("caption") || url.includes("webvtt") || url.includes("subtitle") || url.includes("/srt-")) return false;
   
-  // Soit c'est une playlist HLS (contenant /pl/), soit c'est une vidéo progressive/manifeste (contenant /v2/ et /0/)
-  return url.includes("/pl/") || (url.includes("/v2/") && url.includes("/0/"));
+  // Doit être associé à un mot-clé vidéo
+  const hasVideoKeywords = url.includes("/playlist/") || url.includes("/playback/") || url.includes("/vid/") || url.includes("/video/");
+  if (!hasVideoKeywords) return false;
+  
+  // Ignorer si c'est un segment HLS/DASH (contient un index de segment non-zéro comme /1/ ou /12/ suivi du timestamp)
+  const isSegment = /\/[1-9]\d*\/[0-9]{10,}(?:\?|$)/.test(url);
+  return !isSegment;
 }
 
 function getLinkedInVideoQuality(url) {
@@ -235,8 +240,8 @@ chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     if (!extensionEnabled) return;
     const url = details.url;
-    // Ignorer les segments d'init ou de flux fragmentés (ex: Twitter segments)
-    if (url.includes("/avc1/") || url.includes("/mp4a/") || url.includes(".m4s") || url.includes("seg_") || url.includes("-init.mp4")) {
+    // Ignorer les segments d'init ou de flux fragmentés (ex: Twitter/X segments)
+    if (url.includes(".m4s") || url.includes("seg_") || url.includes("-init.mp4") || url.includes("init.mp4")) {
       return;
     }
     // Filtrage des flux vidéo ou fichiers multimédias (.m3u8, .mp4, .mpd, .webm, ou vidéo LinkedIn)
@@ -290,7 +295,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === "addDetectedStreamFromDOM") {
     const tabId = (sender && sender.tab) ? sender.tab.id : null;
     if (tabId !== null) {
-      addStream(tabId, message.url);
+      const url = message.url;
+      if (url.includes(".m3u8") || url.includes(".mp4") || url.includes(".mpd") || url.includes(".webm") || isLinkedInVideoUrl(url)) {
+        addStream(tabId, url);
+      }
     }
     sendResponse({ status: "ok" });
     return true;

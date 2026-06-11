@@ -392,12 +392,22 @@ function removeAllPanels() {
   }
 }
 
+function decodeHtmlEntities(str) {
+  if (!str) return str;
+  const temp = document.createElement("textarea");
+  temp.innerHTML = str;
+  return temp.value;
+}
+
 function scanForDataSources() {
   const elements = document.querySelectorAll('[data-sources]');
   elements.forEach(el => {
     try {
-      const dataSourcesStr = el.getAttribute('data-sources');
+      let dataSourcesStr = el.getAttribute('data-sources');
       if (dataSourcesStr) {
+        if (dataSourcesStr.includes('&quot;') || dataSourcesStr.includes('&amp;')) {
+          dataSourcesStr = decodeHtmlEntities(dataSourcesStr);
+        }
         const sources = JSON.parse(dataSourcesStr);
         if (Array.isArray(sources)) {
           sources.forEach(source => {
@@ -416,6 +426,49 @@ function scanForDataSources() {
   });
 }
 
+function scanForJsonLd() {
+  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+  scripts.forEach(script => {
+    try {
+      const text = script.textContent;
+      if (text && text.includes("licdn.com")) {
+        // Extraire toutes les URLs dms.licdn.com ou media.licdn.com
+        const matches = text.match(/https?:\/\/[^\s"']+/g);
+        if (matches) {
+          matches.forEach(url => {
+            const cleanUrl = url.replace(/\\/g, '');
+            if (cleanUrl.includes("licdn.com/")) {
+              chrome.runtime.sendMessage({
+                action: "addDetectedStreamFromDOM",
+                url: cleanUrl
+              }).catch(() => {});
+            }
+          });
+        }
+      }
+    } catch (e) {
+      // Ignorer
+    }
+  });
+}
+
+function scanForMetaTags() {
+  const metas = document.querySelectorAll('meta[property^="og:video"], meta[name^="twitter:player"]');
+  metas.forEach(meta => {
+    try {
+      const content = meta.getAttribute('content');
+      if (content && content.includes("licdn.com/")) {
+        chrome.runtime.sendMessage({
+          action: "addDetectedStreamFromDOM",
+          url: content
+        }).catch(() => {});
+      }
+    } catch (e) {
+      // Ignorer
+    }
+  });
+}
+
 // Find HTML5 video players on the page and append the button to their parent wrapper
 function scanForVideos() {
   if (!extensionEnabled) {
@@ -424,6 +477,8 @@ function scanForVideos() {
   }
   injectStyles();
   scanForDataSources();
+  scanForJsonLd();
+  scanForMetaTags();
   const videos = document.getElementsByTagName('video');
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
