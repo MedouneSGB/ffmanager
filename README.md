@@ -17,6 +17,13 @@
 </p>
 
 ---
+<p align="center">
+  <a href="https://github.com/MedouneSGB/ffmanager/releases/download/v0.2.38/FFmpegStudio-Portable-Windows.zip">
+    <img src="https://img.shields.io/badge/📥_Télécharger-Dernière_Version-success?style=for-the-badge" alt="Télécharger" />
+  </a>
+</p>
+
+---
 
 ## 🌟 Présentation
 
